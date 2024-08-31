@@ -1,0 +1,15 @@
+{
+    "extends": ["./tsconfig.json"],
+    "compilerOptions": {
+        "importHelpers": true,
+        "module": "es2015",
+        "noEmit": true,
+        "outDir": "./esm-lint",
+        "target": "es2019"
+    },
+    "include": [
+        "*",
+        "**/*"
+    ],
+    "exclude": []
+}

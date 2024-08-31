@@ -1,0 +1,17 @@
+{
+    "extends": ["./tsconfig.json"],
+    "compilerOptions": {
+        "importHelpers": false,
+        "module": "es2015",
+        "noEmit": false,
+        "outDir": "./esm",
+        "target": "es2019"
+    },
+    "include": [
+        "src/"
+    ],
+    "exclude": [
+        "src/**/*.spec.ts",
+        "src/__test/**"
+    ]
+}
