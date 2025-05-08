@@ -24,6 +24,10 @@ type Callbacks<Events extends TEvents> = {
     ) => void;
 };
 
+type Options = {
+    messagesBeforeAuth: "ignore" | "queue" | "accept";
+};
+
 const AUTH_TIMEOUT = 5000;
 
 let _clientCounter = 0;
@@ -47,17 +51,25 @@ class EZEZServerClient<Events extends TEvents> {
 
     private readonly _callbacks: Callbacks<Events>;
 
-    private readonly _clientId: number = _clientCounter++;
+    private readonly _options: Options;
+
+    private readonly _connectionId: number = _clientCounter++;
 
     private readonly _serialize: (...args: unknown[]) => Buffer;
 
     private readonly _unserialize: (rawData: (Buffer | Uint8Array)) => unknown[];
 
-    public constructor(deps: Deps, callbacks: Callbacks<Events>) {
+    private readonly _queue: {
+        [K in keyof Events]: [eventName: K, eventId: number, eventData: Events[K]];
+    }[keyof Events][] = [];
+
+    public constructor(deps: Deps, callbacks: Callbacks<Events>, options: Options) {
         this._client = deps.client;
         this._serialize = deps.serialize;
         this._unserialize = deps.unserialize;
         this._callbacks = callbacks;
+        this._options = options;
+        this._queue = [];
 
         this._authSent = false;
 
@@ -67,20 +79,18 @@ class EZEZServerClient<Events extends TEvents> {
         this._client.on("close", this._handleClose);
     }
 
-    private readonly _handleMessage = (message: Buffer | string) => {
+    private readonly _handleMessage = (message: Buffer | string) => { // eslint-disable-line max-statements
         if (!(message instanceof Buffer)) {
             // Whatever this is, it's officially not supported
             return;
         }
         const data = this._unserialize(message);
-        console.log("RAW DATA", data);
         if (data[0] === EVENT_AUTH) {
             const [, authKey, protocolVersion] = data as [string, string, number];
             this._authSent = true;
 
             if (protocolVersion !== PROTOCOL_VERSION) {
                 this._authOk = false;
-                console.log("PROTOCOL MISMATCH!!!");
                 this._client.close();
                 return;
             }
@@ -94,16 +104,19 @@ class EZEZServerClient<Events extends TEvents> {
             return;
         }
 
-        if (!this._authOk) {
-            console.log("Ignoring message, not authenticated", data);
-            // Ignore messages until auth is done
+        if (!this._authOk && this._options.messagesBeforeAuth === "ignore") {
             return;
         }
 
         const eventName = data[0] as keyof Events;
-        const [, eventId, ...args] = data as [keyof Events, number, ...Events[typeof eventName][]];
+        const [, eventId, ...args] = data as [keyof Events, number, ...Events[typeof eventName]];
+
+        if (!this._authOk && this._options.messagesBeforeAuth === "queue") {
+            this._queue.push([eventName, eventId, args]);
+            return;
+        }
+
         this._callbacks.onMessage(
-            // @ts-expect-error This is okay
             eventName, args, eventId,
             <TEvent extends keyof Events>(replyEventName: TEvent, ...replyArgs: Events[TEvent]) => {
                 console.log("wanna reply?");
@@ -132,8 +145,8 @@ class EZEZServerClient<Events extends TEvents> {
         }
     };
 
-    public get clientId(): number {
-        return this._clientId;
+    public get connectionId(): number {
+        return this._connectionId;
     }
 }
 

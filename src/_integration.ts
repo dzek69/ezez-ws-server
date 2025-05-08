@@ -7,7 +7,7 @@ const PORT = 6565;
 const wss = new EZEZWebsocketServer({ port: PORT }, {
     onAuth: async (auth) => {
         console.log("authenticating", auth);
-        // await wait(1000);
+        await wait(1000);
         console.log("authenticated ok", auth);
         return true;
     },

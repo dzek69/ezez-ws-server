@@ -10,19 +10,30 @@ type Options = {
     port: number;
     serializerArgs?: Parameters<typeof serializeToBuffer>[1];
     unserializerArgs?: Parameters<typeof unserializeFromBuffer>[1];
+    messagesBeforeAuth?: "ignore" | "queue" | "accept";
 };
 
-type Callbacks = {
+const defaultOptions: Required<Pick<Options, "messagesBeforeAuth">> = {
+    messagesBeforeAuth: "ignore",
+};
+
+type Callbacks<Events extends TEvents> = {
     onAuth: (auth: string) => Promise<boolean>;
-    onMessage: () => void;
+    onMessage: <T extends keyof Events, R extends keyof Events>(
+        // eslint-disable-next-line @typescript-eslint/no-shadow
+        event: T,
+        data: Events[T],
+        eventId: number,
+        reply: (eventName: R, ...args: Events[R]) => void,
+    ) => void;
 };
 
 class EZEZWebsocketServer<Events extends TEvents> {
-    private readonly _options: Options;
+    private readonly _options: Options & { messagesBeforeAuth: "ignore" | "queue" | "accept" };
 
-    private readonly _callbacks: Callbacks;
+    private readonly _callbacks: Callbacks<Events>;
 
-    private socket: WebSocketServer | null = null;
+    private _socket: WebSocketServer | null = null;
 
     private readonly _clients: EZEZServerClient<Events>[] = [];
 
@@ -30,8 +41,8 @@ class EZEZWebsocketServer<Events extends TEvents> {
 
     private readonly _unserialize: (rawData: (Buffer | Uint8Array)) => unknown[];
 
-    public constructor(options: Options, callbacks: Callbacks) {
-        this._options = options;
+    public constructor(options: Options, callbacks: Callbacks<Events>) {
+        this._options = { ...defaultOptions, ...options };
         this._callbacks = callbacks;
 
         this._serialize = serializeToBuffer.bind(null, Buffer, options.serializerArgs ?? []);
@@ -41,7 +52,7 @@ class EZEZWebsocketServer<Events extends TEvents> {
     public start() {
         return new Promise<void>((resolve, reject) => {
             const wss = new WebSocketServer({ port: this._options.port });
-            this.socket = wss;
+            this._socket = wss;
 
             wss.on("connection", (client) => {
                 this._clients.push(
@@ -55,6 +66,8 @@ class EZEZWebsocketServer<Events extends TEvents> {
                         },
                         onAuth: this._callbacks.onAuth,
                         onMessage: this._callbacks.onMessage,
+                    }, {
+                        messagesBeforeAuth: this._options.messagesBeforeAuth,
                     }),
                 );
             });
@@ -69,6 +82,21 @@ class EZEZWebsocketServer<Events extends TEvents> {
                 reject(e);
             });
         });
+    }
+
+    public get clients() {
+        return this._clients;
+    }
+
+    public get socket() {
+        return this._socket;
+    }
+
+    public stop() {
+        if (this._socket) {
+            this._socket.close();
+            this._socket = null;
+        }
     }
 }
 
