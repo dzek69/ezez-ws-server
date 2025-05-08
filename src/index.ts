@@ -1,29 +1,41 @@
 import { WebSocketServer } from "ws";
-import { pull } from "@ezez/utils";
+import { pull, serializeToBuffer, unserializeFromBuffer } from "@ezez/utils";
+
+import type { TEvents } from "./types";
 
 import { EZEZServerClient } from "./Client";
 
 // TODO extend WebSocketServer
 type Options = {
     port: number;
+    serializerArgs?: Parameters<typeof serializeToBuffer>[1];
+    unserializerArgs?: Parameters<typeof unserializeFromBuffer>[1];
 };
 
-type Deps = {
+type Callbacks = {
     onAuth: (auth: string) => Promise<boolean>;
+    onMessage: () => void;
 };
 
-class EZEZWebsocketServer {
+class EZEZWebsocketServer<Events extends TEvents> {
     private readonly _options: Options;
 
-    private readonly _deps: Deps;
+    private readonly _callbacks: Callbacks;
 
     private socket: WebSocketServer | null = null;
 
-    private readonly _clients: EZEZServerClient[] = [];
+    private readonly _clients: EZEZServerClient<Events>[] = [];
 
-    public constructor(options: Options, deps: Deps) {
+    private readonly _serialize: (...args: unknown[]) => Buffer;
+
+    private readonly _unserialize: (rawData: (Buffer | Uint8Array)) => unknown[];
+
+    public constructor(options: Options, callbacks: Callbacks) {
         this._options = options;
-        this._deps = deps;
+        this._callbacks = callbacks;
+
+        this._serialize = serializeToBuffer.bind(null, Buffer, options.serializerArgs ?? []);
+        this._unserialize = unserializeFromBuffer.bind(null, Buffer, options.unserializerArgs ?? []);
     }
 
     public start() {
@@ -33,11 +45,16 @@ class EZEZWebsocketServer {
 
             wss.on("connection", (client) => {
                 this._clients.push(
-                    new EZEZServerClient({ client }, {
+                    new EZEZServerClient<Events>({
+                        client: client,
+                        serialize: this._serialize,
+                        unserialize: this._unserialize,
+                    }, {
                         onClose: (cl) => {
                             pull(this._clients, cl);
                         },
-                        onAuth: this._deps.onAuth,
+                        onAuth: this._callbacks.onAuth,
+                        onMessage: this._callbacks.onMessage,
                     }),
                 );
             });
