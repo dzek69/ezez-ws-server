@@ -84,6 +84,12 @@ class EZEZWebsocketServer<Events extends TEvents> {
         });
     }
 
+    public broadcast<T extends keyof Events>(eventName: T, args: Events[T]) {
+        this._clients.forEach((client) => {
+            client.send(eventName, args);
+        });
+    }
+
     public get clients() {
         return this._clients;
     }
