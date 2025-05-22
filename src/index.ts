@@ -1,7 +1,7 @@
 import { WebSocketServer } from "ws";
 import { pull, serializeToBuffer, unserializeFromBuffer } from "@ezez/utils";
 
-import type { TEvents } from "./types";
+import type { Callbacks, TEvents } from "./types";
 
 import { EZEZServerClient } from "./Client";
 
@@ -15,17 +15,6 @@ type Options = {
 
 const defaultOptions: Required<Pick<Options, "messagesBeforeAuth">> = {
     messagesBeforeAuth: "ignore",
-};
-
-type Callbacks<Events extends TEvents> = {
-    onAuth: (auth: string) => Promise<boolean>;
-    onMessage: <T extends keyof Events, R extends keyof Events>(
-        // eslint-disable-next-line @typescript-eslint/no-shadow
-        event: T,
-        data: Events[T],
-        eventId: number,
-        reply: (eventName: R, ...args: Events[R]) => void,
-    ) => void;
 };
 
 class EZEZWebsocketServer<Events extends TEvents> {
@@ -64,7 +53,9 @@ class EZEZWebsocketServer<Events extends TEvents> {
                         onClose: (cl) => {
                             pull(this._clients, cl);
                         },
-                        onAuth: this._callbacks.onAuth,
+                        onAuthRequest: this._callbacks.onAuthRequest,
+                        onAuthOk: this._callbacks.onAuthOk,
+                        onAuthRejected: this._callbacks.onAuthRejected,
                         onMessage: this._callbacks.onMessage,
                     }, {
                         messagesBeforeAuth: this._options.messagesBeforeAuth,

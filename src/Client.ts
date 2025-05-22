@@ -2,7 +2,7 @@ import { noop } from "@ezez/utils";
 // eslint-disable-next-line @typescript-eslint/no-shadow
 import { WebSocket } from "ws";
 
-import type { TEvents } from "./types";
+import type { AwaitingReply, Callbacks, Ids, MakeOptional, ReplyTupleUnion, TEvents } from "./types";
 
 import { EVENT_AUTH_OK, EVENT_AUTH_REJECTED, EVENT_AUTH } from "./types";
 
@@ -12,16 +12,10 @@ type Deps = {
     unserialize: (rawData: (Buffer | Uint8Array)) => unknown[];
 };
 
-type Callbacks<Events extends TEvents> = {
+type ClientCallbacks<Events extends TEvents> = MakeOptional<
+    Callbacks<Events>, "onAuthOk" | "onAuthRejected" | "onMessage"
+> & {
     onClose: (client: EZEZServerClient<Events>) => void;
-    onAuth: (auth: string) => Promise<boolean>;
-    onMessage: <T extends keyof Events, R extends keyof Events>(
-        // eslint-disable-next-line @typescript-eslint/no-shadow
-        event: T,
-        data: Events[T],
-        eventId: number,
-        reply: (eventName: R, ...args: Events[R]) => void,
-    ) => void;
 };
 
 type Options = {
@@ -32,6 +26,7 @@ const AUTH_TIMEOUT = 5000;
 
 let _clientCounter = 0;
 const PROTOCOL_VERSION = 1;
+const NOT_FOUND = -1;
 
 /**
  * Class representing a client connected to the server.
@@ -49,7 +44,7 @@ class EZEZServerClient<Events extends TEvents> {
      */
     private _authOk: boolean = false;
 
-    private readonly _callbacks: Callbacks<Events>;
+    private readonly _callbacks: ClientCallbacks<Events>;
 
     private readonly _options: Options;
 
@@ -65,9 +60,17 @@ class EZEZServerClient<Events extends TEvents> {
         [K in keyof Events]: [eventName: K, eventId: number, eventData: Events[K]];
     }[keyof Events][] = [];
 
-    private readonly _awaitingReplies: any[] = [];
+    private readonly _awaitingReplies: AwaitingReply<Events>[] = [];
 
-    public constructor(deps: Deps, callbacks: Callbacks<Events>, options: Options) {
+    public send: <TEvent extends keyof Events>(
+        eventName: TEvent,
+        args: Events[TEvent],
+        onReply?: <REvent extends ReplyTupleUnion<Events, typeof this.send>>(
+            ...replyArgs: REvent
+        ) => void,
+    ) => Ids | undefined;
+
+    public constructor(deps: Deps, callbacks: ClientCallbacks<Events>, options: Options) {
         this._client = deps.client;
         this._serialize = deps.serialize;
         this._unserialize = deps.unserialize;
@@ -78,8 +81,13 @@ class EZEZServerClient<Events extends TEvents> {
         setTimeout(this._checkAuthTimeout, AUTH_TIMEOUT);
         this._client.on("message", this._handleMessage);
         this._client.on("close", this._handleClose);
+
+        this.send = (eventName, args, onReply) => {
+            return this._send(eventName, args, null, onReply);
+        };
     }
 
+    // eslint-disable-next-line max-lines-per-function
     private readonly _handleMessage = (message: Buffer | string) => { // eslint-disable-line max-statements
         if (!(message instanceof Buffer)) {
             // Whatever this is, it's officially not supported
@@ -92,29 +100,35 @@ class EZEZServerClient<Events extends TEvents> {
 
             if (protocolVersion !== PROTOCOL_VERSION) {
                 this._authOk = false;
+                const reason = `Protocol version mismatch, wanted ${PROTOCOL_VERSION}, got ${protocolVersion}`;
+                this._client.send(this._serialize(EVENT_AUTH_REJECTED, reason));
+                this._callbacks.onAuthRejected?.(this, reason);
                 this._client.close();
                 return;
             }
 
-            this._callbacks.onAuth(authKey).then((isAuthOk) => {
+            this._callbacks.onAuthRequest(this, authKey).then((isAuthOk) => {
                 this._authOk = isAuthOk;
 
                 if (!isAuthOk) {
-                    this._client.send(this._serialize(EVENT_AUTH_REJECTED, "Invalid auth key"));
+                    const reason = "Invalid auth key";
+                    this._client.send(this._serialize(EVENT_AUTH_REJECTED, reason));
+                    this._callbacks.onAuthRejected?.(this, reason);
                     this._client.close();
                     return;
                 }
 
                 this._client.send(this._serialize(EVENT_AUTH_OK));
-                this._queue.forEach(([qEventName, qEventId, qArgs]) => {
-                    this._callbacks.onMessage(
-                        qEventName, qArgs, qEventId,
-                        <TEvent extends keyof Events>(replyEventName: TEvent, ...replyArgs: Events[TEvent]) => {
-                            console.log("wanna reply?");
-                            // this._client.send;
-                        },
-                    );
-                });
+                this._callbacks.onAuthOk?.(this);
+                // this._queue.forEach(([qEventName, qEventId, qArgs]) => {
+                //     this._callbacks.onMessage(
+                //         qEventName, qArgs, qEventId,
+                //         <TEvent extends keyof Events>(replyEventName: TEvent, ...replyArgs: Events[TEvent]) => {
+                //             console.log("wanna reply?");
+                //             // this._client.send;
+                //         },
+                //     );
+                // });
                 this._queue.length = 0;
             }).catch(noop);
             return;
@@ -125,44 +139,58 @@ class EZEZServerClient<Events extends TEvents> {
         }
 
         const eventName = data[0] as keyof Events;
-        const [, eventId, ...args] = data as [keyof Events, number, ...Events[typeof eventName]];
+        const [, eventId, replyTo, ...args] = data as [
+            keyof Events, number, number | null, ...Events[typeof eventName],
+        ];
 
         if (!this._authOk && this._options.messagesBeforeAuth === "queue") {
             this._queue.push([eventName, eventId, args]);
             return;
         }
 
-        this._callbacks.onMessage(
-            eventName, args, eventId,
-            <TEvent extends keyof Events>(replyEventName: TEvent, ...replyArgs: Events[TEvent]) => {
-                console.log("wanna reply?");
-                // this._client.send;
-            },
-        );
+        type ReplyFn = Parameters<NonNullable<Callbacks<Events>["onMessage"]>>[2];
+        const replyFn: ReplyFn = (_eventName, _args, onReply) => this._send(_eventName, _args, eventId, onReply);
+
+        if (replyTo) {
+            const replyIdx = this._awaitingReplies.findIndex((reply) => reply.eventId === replyTo);
+            if (replyIdx !== NOT_FOUND) {
+                const reply = this._awaitingReplies[replyIdx]!;
+                this._awaitingReplies.splice(replyIdx, 1);
+                reply.onReply(eventName, args, replyFn, { eventId, replyTo });
+                return;
+            }
+        }
+
+        this._callbacks.onMessage?.(eventName, args, replyFn, { eventId, replyTo });
     };
 
     public get alive() {
         return this._client.readyState === WebSocket.OPEN;
     }
 
-    public send<TEvent extends keyof Events, REvent extends keyof Events>(
-        eventName: TEvent, args: Events[TEvent], onReply?: (rEventName: REvent, ...rArgs: Events[REvent]) => void,
-    ) {
+    private _send<TEvent extends keyof Events>(
+        eventName: TEvent, args: Events[TEvent], replyId: number | null = null,
+        onReply?: <REvent extends ReplyTupleUnion<Events, typeof this.send>>(
+            ...replyArgs: REvent
+        ) => void,
+    ): Ids | undefined {
         const client = this._client;
         if (!this.alive) {
+            // TODO config what to do? crash, ignore
             return;
         }
 
-        client.send(this._serialize(eventName, ++this._id, ...args));
+        client.send(this._serialize(eventName, ++this._id, replyId, ...args));
 
-        // if (onReply) {
-        //     this._awaitingReplies.push({
-        //         time: Date.now(),
-        //         eventName: eventName,
-        //         eventId: this._id,
-        //         onReply: onReply,
-        //     });
-        // }
+        if (onReply) {
+            this._awaitingReplies.push({
+                time: Date.now(),
+                eventId: this._id,
+                onReply: onReply,
+            });
+        }
+
+        return { eventId: this._id, replyTo: replyId };
     }
 
     private readonly _handleClose = () => {
@@ -172,7 +200,9 @@ class EZEZServerClient<Events extends TEvents> {
 
     private readonly _checkAuthTimeout = () => {
         if (!this._authSent) {
-            this._client.send(this._serialize(EVENT_AUTH_REJECTED, "Auth timeout"));
+            const reason = "Auth timeout";
+            this._client.send(this._serialize(EVENT_AUTH_REJECTED, reason));
+            this._callbacks.onAuthRejected?.(this, reason);
             this._client.close();
         }
     };

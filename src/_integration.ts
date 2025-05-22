@@ -4,21 +4,33 @@ import { EZEZWebsocketServer } from "./index";
 
 const PORT = 6565;
 
-const wss = new EZEZWebsocketServer({
+const wss = new EZEZWebsocketServer<{ elo: [string] }>({
     port: PORT,
-    messagesBeforeAuth: "queue",
+    messagesBeforeAuth: "ignore",
 }, {
-    onAuth: async (auth) => {
-        console.log("authenticating", auth);
-        await wait(1000);
-        console.log("authenticated ok", auth);
+    onAuthRequest: async (client, auth) => {
         return true;
     },
-    onMessage: (eventName, eventData, eventId, reply) => {
+    onAuthOk: (client) => {
+        // client.send("invalid from server", [true]);
+    },
+    onMessage: (eventName, eventData, reply, ids) => {
         console.log("got some message!!!", {
             eventName,
-            // eventName, eventData, eventId, reply,
+            eventData,
+            reply,
+            ids,
         });
+
+        if (eventName === "ping1") {
+            const replyId = reply("pong1", ["true"], (eventName, args, reply, ids) => {
+                console.log("got a reply", eventName);
+                reply("pong2", [], () => {
+                    console.log("got a reply to pong2");
+                });
+            });
+            console.log("replied to", ids.eventId, "with", replyId);
+        }
     },
 });
 
@@ -27,7 +39,7 @@ const wss = new EZEZWebsocketServer({
     console.log("Server started on port", PORT);
 
     setInterval(() => {
-        console.log("broadcasting");
-        wss.broadcast("test", ["hello world"]);
+        // console.log("broadcasting");
+        // wss.broadcast("test", ["hello world"]);
     }, 2000);
 })().catch(rethrow);
