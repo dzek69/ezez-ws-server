@@ -1,5 +1,3 @@
-import { rethrow, wait } from "@ezez/utils";
-
 import { EZEZWebsocketServer } from "./index";
 
 const PORT = 6565;
@@ -42,4 +40,7 @@ const wss = new EZEZWebsocketServer<{ elo: [string] }>({
         // console.log("broadcasting");
         // wss.broadcast("test", ["hello world"]);
     }, 2000);
-})().catch(rethrow);
+})().catch((e) => {
+    console.error("Could not start the server");
+    console.error(e);
+});

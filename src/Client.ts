@@ -2,7 +2,7 @@ import { noop } from "@ezez/utils";
 // eslint-disable-next-line @typescript-eslint/no-shadow
 import { WebSocket } from "ws";
 
-import type { AwaitingReply, Callbacks, Ids, MakeOptional, ReplyTupleUnion, TEvents } from "./types";
+import type { AwaitingReply, Callbacks, ClientOptions, Ids, MakeOptional, ReplyTupleUnion, TEvents } from "./types";
 
 import { EVENT_AUTH_OK, EVENT_AUTH_REJECTED, EVENT_AUTH } from "./types";
 
@@ -16,10 +16,6 @@ type ClientCallbacks<Events extends TEvents> = MakeOptional<
     Callbacks<Events>, "onAuthOk" | "onAuthRejected" | "onMessage"
 > & {
     onClose: (client: EZEZServerClient<Events>) => void;
-};
-
-type Options = {
-    messagesBeforeAuth: "ignore" | "queue" | "accept";
 };
 
 const AUTH_TIMEOUT = 5000;
@@ -46,7 +42,7 @@ class EZEZServerClient<Events extends TEvents> {
 
     private readonly _callbacks: ClientCallbacks<Events>;
 
-    private readonly _options: Options;
+    private readonly _options: Required<ClientOptions>;
 
     private _id = 0;
 
@@ -56,9 +52,7 @@ class EZEZServerClient<Events extends TEvents> {
 
     private readonly _unserialize: (rawData: (Buffer | Uint8Array)) => unknown[];
 
-    private readonly _queue: {
-        [K in keyof Events]: [eventName: K, eventId: number, eventData: Events[K]];
-    }[keyof Events][] = [];
+    private readonly _queue: Buffer[] = [];
 
     private readonly _awaitingReplies: AwaitingReply<Events>[] = [];
 
@@ -70,7 +64,7 @@ class EZEZServerClient<Events extends TEvents> {
         ) => void,
     ) => Ids | undefined;
 
-    public constructor(deps: Deps, callbacks: ClientCallbacks<Events>, options: Options) {
+    public constructor(deps: Deps, callbacks: ClientCallbacks<Events>, options: Required<ClientOptions>) {
         this._client = deps.client;
         this._serialize = deps.serialize;
         this._unserialize = deps.unserialize;
@@ -120,15 +114,9 @@ class EZEZServerClient<Events extends TEvents> {
 
                 this._client.send(this._serialize(EVENT_AUTH_OK));
                 this._callbacks.onAuthOk?.(this);
-                // this._queue.forEach(([qEventName, qEventId, qArgs]) => {
-                //     this._callbacks.onMessage(
-                //         qEventName, qArgs, qEventId,
-                //         <TEvent extends keyof Events>(replyEventName: TEvent, ...replyArgs: Events[TEvent]) => {
-                //             console.log("wanna reply?");
-                //             // this._client.send;
-                //         },
-                //     );
-                // });
+                this._queue.forEach(msg => {
+                    this._handleMessage(msg);
+                });
                 this._queue.length = 0;
             }).catch(noop);
             return;
@@ -144,7 +132,7 @@ class EZEZServerClient<Events extends TEvents> {
         ];
 
         if (!this._authOk && this._options.messagesBeforeAuth === "queue") {
-            this._queue.push([eventName, eventId, args]);
+            this._queue.push(message);
             return;
         }
 
@@ -176,11 +164,15 @@ class EZEZServerClient<Events extends TEvents> {
     ): Ids | undefined {
         const client = this._client;
         if (!this.alive) {
-            // TODO config what to do? crash, ignore
+            if (this._options.sendAfterDisconnect === "throw") {
+                throw new Error("Can't send message - client is disconnected");
+            }
             return;
         }
 
-        client.send(this._serialize(eventName, ++this._id, replyId, ...args));
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        const _args = args ? args : [];
+        client.send(this._serialize(eventName, ++this._id, replyId, ..._args));
 
         if (onReply) {
             this._awaitingReplies.push({

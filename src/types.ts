@@ -1,3 +1,5 @@
+import type { ServerOptions } from "ws";
+import type { serializeToBuffer, unserializeFromBuffer } from "@ezez/utils";
 import type { EZEZServerClient } from "./Client";
 
 const EVENT_AUTH = "ezez-ws::auth";
@@ -44,6 +46,39 @@ type AwaitingReply<Events extends TEvents> = {
     onReply: NonNullable<Callbacks<Events>["onMessage"]>;
 };
 
+type EZEZServerOptions = ServerOptions & {
+    /**
+     * Port to listen on
+     */
+    port: number;
+    /**
+     * Custom data serializer options, see `@ezez/utils - serializeToBuffer`
+     * Your custom serializer must be compatible with custom deserializer on the client side
+     */
+    serializerArgs?: Parameters<typeof serializeToBuffer>[1];
+    /**
+     * Custom data unserializer options, see `@ezez/utils - unserializeFromBuffer`
+     * Your custom unserializer must be compatible with custom serializer on the client side
+     */
+    unserializerArgs?: Parameters<typeof unserializeFromBuffer>[1];
+};
+
+type ClientOptions = {
+    /**
+     * How to handle messages before authentication
+     * - "ignore": ignore the message
+     * - "queue": queue the message until authentication
+     * - "accept": accept the message (it's your responsibility to properly handle each message type)
+     */
+    messagesBeforeAuth?: "ignore" | "queue" | "accept";
+    /**
+     * How to handle messages that servers tries to send after disconnection
+     * - "ignore": ignore the message
+     * - "throw": throw an error
+     */
+    sendAfterDisconnect?: "ignore" | "throw";
+};
+
 export {
     EVENT_AUTH,
     EVENT_AUTH_OK,
@@ -57,4 +92,6 @@ export type {
     MakeOptional,
     Ids,
     AwaitingReply,
+    EZEZServerOptions,
+    ClientOptions,
 };

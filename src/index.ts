@@ -1,28 +1,23 @@
 import { WebSocketServer } from "ws";
-import { pull, serializeToBuffer, unserializeFromBuffer } from "@ezez/utils";
+import { ensureError, omit, pull, serializeToBuffer, unserializeFromBuffer } from "@ezez/utils";
 
-import type { Callbacks, TEvents } from "./types";
+import type { Callbacks, ClientOptions, EZEZServerOptions, TEvents } from "./types";
 
 import { EZEZServerClient } from "./Client";
 
-// TODO extend WebSocketServer
-type Options = {
-    port: number;
-    serializerArgs?: Parameters<typeof serializeToBuffer>[1];
-    unserializerArgs?: Parameters<typeof unserializeFromBuffer>[1];
-    messagesBeforeAuth?: "ignore" | "queue" | "accept";
-};
+type Options = EZEZServerOptions & ClientOptions;
 
-const defaultOptions: Required<Pick<Options, "messagesBeforeAuth">> = {
+const defaultOptions: Required<ClientOptions> = {
     messagesBeforeAuth: "ignore",
+    sendAfterDisconnect: "ignore",
 };
 
 class EZEZWebsocketServer<Events extends TEvents> {
-    private readonly _options: Options & { messagesBeforeAuth: "ignore" | "queue" | "accept" };
+    private readonly _options: EZEZServerOptions & Required<ClientOptions>;
 
     private readonly _callbacks: Callbacks<Events>;
 
-    private _socket: WebSocketServer | null = null;
+    private _wss: WebSocketServer | null = null;
 
     private readonly _clients: EZEZServerClient<Events>[] = [];
 
@@ -40,59 +35,91 @@ class EZEZWebsocketServer<Events extends TEvents> {
 
     public start() {
         return new Promise<void>((resolve, reject) => {
-            const wss = new WebSocketServer({ port: this._options.port });
-            this._socket = wss;
+            try {
+                const wss = new WebSocketServer(omit(this._options, [
+                    "serializerArgs", "unserializerArgs", "messagesBeforeAuth", "sendAfterDisconnect",
+                ]));
+                this._wss = wss;
 
-            wss.on("connection", (client) => {
-                this._clients.push(
-                    new EZEZServerClient<Events>({
-                        client: client,
-                        serialize: this._serialize,
-                        unserialize: this._unserialize,
-                    }, {
-                        onClose: (cl) => {
-                            pull(this._clients, cl);
-                        },
-                        onAuthRequest: this._callbacks.onAuthRequest,
-                        onAuthOk: this._callbacks.onAuthOk,
-                        onAuthRejected: this._callbacks.onAuthRejected,
-                        onMessage: this._callbacks.onMessage,
-                    }, {
-                        messagesBeforeAuth: this._options.messagesBeforeAuth,
-                    }),
-                );
-            });
+                let fulfilled = false;
 
-            wss.once("listening", () => {
-                resolve();
-            });
+                wss.on("connection", (client) => {
+                    this._clients.push(
+                        new EZEZServerClient<Events>({
+                            client: client,
+                            serialize: this._serialize,
+                            unserialize: this._unserialize,
+                        }, {
+                            onClose: (cl) => {
+                                pull(this._clients, cl);
+                            },
+                            onAuthRequest: this._callbacks.onAuthRequest,
+                            onAuthOk: this._callbacks.onAuthOk,
+                            onAuthRejected: this._callbacks.onAuthRejected,
+                            onMessage: this._callbacks.onMessage,
+                        }, {
+                            messagesBeforeAuth: this._options.messagesBeforeAuth,
+                            sendAfterDisconnect: this._options.sendAfterDisconnect,
+                        }),
+                    );
+                });
 
-            wss.once("error", (e) => {
-                // TODO remove after testing
-                console.error("WSS error", e);
-                reject(e);
-            });
+                wss.once("listening", () => {
+                    if (fulfilled) {
+                        throw new Error("Unexpected `listening` event after `error`");
+                    }
+                    resolve();
+                    fulfilled = true;
+                });
+
+                wss.once("error", (e) => {
+                    if (fulfilled) {
+                        throw new Error("Unexpected `error` event after `listening`");
+                    }
+                    reject(e);
+                    fulfilled = true;
+                });
+            }
+            catch (e) {
+                reject(ensureError(e));
+            }
         });
     }
 
+    /**
+     * Broadcast a message to all clients
+     * @param eventName
+     * @param args
+     */
     public broadcast<T extends keyof Events>(eventName: T, args: Events[T]) {
         this._clients.forEach((client) => {
             client.send(eventName, args);
         });
     }
 
+    /**
+     * Gets the list of connected clients
+     */
     public get clients() {
-        return this._clients;
+        return [...this._clients];
     }
 
-    public get socket() {
-        return this._socket;
+    /**
+     * Gets the raw WebSocketServer instance
+     * Warning: sending messages manually will probably result in crashes due to unexpected message format
+     */
+    public get wss() {
+        return this._wss;
     }
 
-    public stop() {
-        if (this._socket) {
-            this._socket.close();
-            this._socket = null;
+    /**
+     * Stops the server
+     */
+    public close() {
+        if (this._wss) {
+            this._wss.close();
+            this._wss = null;
+            this._clients.length = 0;
         }
     }
 }
