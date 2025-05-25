@@ -21,9 +21,18 @@ const wss = new EZEZWebsocketServer<IncomingEvents, OutgoingEvents>({
     },
     onAuthOk: (client) => {
         // client.send("invalid from server", [true]);
+        client.on("ping1", (args, reply) => {
+            console.info("ping1");
+        });
+        client.on("ping2", (args, reply) => {
+            console.info("got ping2 from client, let's reply with pong2", args);
+            reply("pong2", [], () => {
+                console.info("got inside reply to pong2");
+            });
+        });
     },
     onMessage: (client, eventName, eventData, reply, ids) => {
-        console.log("got some message!!!", {
+        console.info("got some message!!!", {
             eventName,
             eventData,
             reply,
@@ -31,26 +40,27 @@ const wss = new EZEZWebsocketServer<IncomingEvents, OutgoingEvents>({
         });
 
         if (eventName === "ping1") {
-            const replyId = reply("pong1", ["true"], (eventName, args, reply, ids) => {
+            const replyId = reply("pong1", ["true"], /* (client, eventName, args, reply, ids) => {
                 console.log("got a reply", eventName);
                 reply("pong2", [], () => {
                     console.log("got a reply to pong2");
                 });
-            });
-            console.log("replied to", ids.eventId, "with", replyId);
+            } */);
+            console.info("replied to", ids.eventId, "with", replyId);
         }
     },
 });
 
 (async () => {
     await wss.start();
-    console.log("Server started on port", PORT);
+    console.info("Server started on port", PORT);
 
     setInterval(() => {
         // console.log("broadcasting");
         // wss.broadcast("test", ["hello world"]);
+        // eslint-disable-next-line @typescript-eslint/no-magic-numbers
     }, 2000);
-})().catch((e) => {
+})().catch((e: unknown) => {
     console.error("Could not start the server");
     console.error(e);
 });

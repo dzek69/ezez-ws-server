@@ -1,8 +1,18 @@
 import { noop } from "@ezez/utils";
 // eslint-disable-next-line @typescript-eslint/no-shadow
 import { WebSocket } from "ws";
+import EventEmitter from "eventemitter3";
 
-import type { AwaitingReply, Callbacks, ClientOptions, Ids, MakeOptional, ReplyTupleUnion, TEvents } from "./types";
+import type {
+    AwaitingReply,
+    Callbacks,
+    ClientOptions,
+    EventsToEventEmitter,
+    Ids,
+    MakeOptional,
+    ReplyTupleUnion,
+    TEvents,
+} from "./types";
 
 import { EVENT_AUTH_OK, EVENT_AUTH_REJECTED, EVENT_AUTH } from "./types";
 
@@ -79,6 +89,37 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
         ) => void,
     ) => Ids | undefined;
 
+    private readonly _ee: EventEmitter<EventsToEventEmitter<
+        IncomingEvents, OutgoingEvents,
+        EZEZServerClient<IncomingEvents, OutgoingEvents>
+    >>;
+
+    /**
+     * Registers an event listener for given event.
+     * Please note that if a message is a reply and `onReply` function was given, then this listener will not be called.
+     */
+    public readonly on: OmitThisParameter<EventEmitter<EventsToEventEmitter<
+        IncomingEvents, OutgoingEvents,
+        EZEZServerClient<IncomingEvents, OutgoingEvents>
+    >>["on"]>;
+
+    /**
+     * Unregisters an event listener for given event.
+     */
+    public readonly off: OmitThisParameter<EventEmitter<EventsToEventEmitter<
+        IncomingEvents, OutgoingEvents,
+        EZEZServerClient<IncomingEvents, OutgoingEvents>
+    >>["off"]>;
+
+    /**
+     * Registers an event listener for given event, which will be called only once.
+     * Please note that if a message is a reply and `onReply` function was given, then this listener will not be called.
+     */
+    public readonly once: OmitThisParameter<EventEmitter<EventsToEventEmitter<
+        IncomingEvents, OutgoingEvents,
+        EZEZServerClient<IncomingEvents, OutgoingEvents>
+    >>["once"]>;
+
     public constructor(
         deps: Deps, callbacks: ClientCallbacks<IncomingEvents, OutgoingEvents>, options: Required<ClientOptions>,
     ) {
@@ -87,6 +128,10 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
         this._unserialize = deps.unserialize;
         this._callbacks = callbacks;
         this._options = options;
+        this._ee = new EventEmitter();
+        this.on = this._ee.on.bind(this._ee);
+        this.off = this._ee.off.bind(this._ee);
+        this.once = this._ee.once.bind(this._ee);
 
         // No need to stop this timeout, it won't do anything if auth succeeds
         setTimeout(this._checkAuthTimeout, AUTH_TIMEOUT);
@@ -167,6 +212,8 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
         }
 
         this._callbacks.onMessage?.(this, eventName, args, replyFn, { eventId, replyTo });
+        // @ts-expect-error not sure why emit does not like the type, `on` works flawlessly
+        this._ee.emit(eventName, args, replyFn, { eventId, replyTo });
     };
 
     /**
@@ -210,6 +257,7 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
     private readonly _handleClose = () => {
         this._callbacks.onClose(this);
         this._queue.length = 0;
+        this._ee.removeAllListeners();
     };
 
     private readonly _checkAuthTimeout = () => {

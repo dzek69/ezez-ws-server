@@ -51,7 +51,7 @@
     "prettier": "^3.2.5",
     "resolve-tspaths": "^0.8.15",
     "ts-node": "^10.9.2",
-    "typedoc": "0.26.0-beta.2",
+    "typedoc": "0.28.4",
     "typescript": "^5.4.5"
   },
   "husky": {
@@ -68,6 +68,13 @@
   "dependencies": {
     "@ezez/utils": "^4.5.0",
     "bufferutil": "^4.0.8",
+    "eventemitter3": "^5.0.1",
     "ws": "^8.18.0"
-  }
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "bufferutil"
+    ]
+  },
+  "packageManager": "pnpm@10.11.0"
 }

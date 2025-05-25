@@ -10,6 +10,17 @@ type ReservedNames = `ezez-ws::${string}`;
 type ReservedEventKeys<T extends string> = {
     [K in T]?: never;
 };
+
+/**
+ * Generic type representing all events with the data that will come with them.
+ * @example
+ * ```typescript
+ * type IncomingEvents = {
+ *     addItem: [item: string, quantity: number],
+ *     removeItem: [item: string],
+ * }
+ * ```
+ */
 type TEvents = Record<string, unknown[]> & ReservedEventKeys<ReservedNames>;
 
 type Ids = {
@@ -26,10 +37,39 @@ type ReplyTupleUnion<
     ]
 }[keyof IncomingEvents];
 
+type EventsToEventEmitter<
+    IncomingEvents extends TEvents, OutgoingEvents extends TEvents,
+    Client extends EZEZServerClient<IncomingEvents, OutgoingEvents>,
+> = {
+    [K in keyof IncomingEvents]: (args: IncomingEvents[K], reply: Client["send"], ids: Ids) => void
+};
+
 type Callbacks<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> = {
+    /**
+     * Called when the client is requesting authentication. Verify the auth string and return true if the client is
+     * allowed to connect or false if the client should be rejected.
+     * If your server does not require authentication, you should always return true.
+     * @param client - The client that is requesting authentication
+     * @param auth - The authentication string sent by the client
+     */
     onAuthRequest: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>, auth: string) => Promise<boolean>;
+    /**
+     * Called when the client is authenticated successfully.
+     * Use this to set up the client, e.g. send initial data or set up listeners.
+     * @param client - The client that was authenticated
+     */
     onAuthOk?: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>) => void;
+    /**
+     * Called when the authentication for given client is rejected
+     * @param client - The client that was rejected
+     * @param reason - The reason for the rejection, can be used to display a message on the client's UI
+     */
     onAuthRejected?: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>, reason: string) => void;
+    /**
+     * Called when a message (any event) is received from the client.
+     * Use @{link EZEZServerClient["on"]} to listen for specific events.
+     * Please note that if a message is a reply and `onReply` function was given, then this listener will not be called.
+     */
     onMessage?: <
         REvent extends ReplyTupleUnion<
             IncomingEvents, OutgoingEvents,
@@ -101,6 +141,7 @@ export type {
     Callbacks,
     MakeOptional,
     Ids,
+    EventsToEventEmitter,
     AwaitingReply,
     EZEZServerOptions,
     ClientOptions,
