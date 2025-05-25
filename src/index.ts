@@ -12,20 +12,20 @@ const defaultOptions: Required<ClientOptions> = {
     sendAfterDisconnect: "ignore",
 };
 
-class EZEZWebsocketServer<Events extends TEvents> {
+class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> {
     private readonly _options: EZEZServerOptions & Required<ClientOptions>;
 
-    private readonly _callbacks: Callbacks<Events>;
+    private readonly _callbacks: Callbacks<IncomingEvents, OutgoingEvents>;
 
     private _wss: WebSocketServer | null = null;
 
-    private readonly _clients: EZEZServerClient<Events>[] = [];
+    private readonly _clients: EZEZServerClient<IncomingEvents, OutgoingEvents>[] = [];
 
     private readonly _serialize: (...args: unknown[]) => Buffer;
 
     private readonly _unserialize: (rawData: (Buffer | Uint8Array)) => unknown[];
 
-    public constructor(options: Options, callbacks: Callbacks<Events>) {
+    public constructor(options: Options, callbacks: Callbacks<IncomingEvents, OutgoingEvents>) {
         this._options = { ...defaultOptions, ...options };
         this._callbacks = callbacks;
 
@@ -33,6 +33,9 @@ class EZEZWebsocketServer<Events extends TEvents> {
         this._unserialize = unserializeFromBuffer.bind(null, Buffer, options.unserializerArgs ?? []);
     }
 
+    /**
+     * Starts the server and begins listening for connections
+     */
     public start() {
         return new Promise<void>((resolve, reject) => {
             try {
@@ -45,7 +48,7 @@ class EZEZWebsocketServer<Events extends TEvents> {
 
                 wss.on("connection", (client) => {
                     this._clients.push(
-                        new EZEZServerClient<Events>({
+                        new EZEZServerClient<IncomingEvents, OutgoingEvents>({
                             client: client,
                             serialize: this._serialize,
                             unserialize: this._unserialize,
@@ -91,7 +94,7 @@ class EZEZWebsocketServer<Events extends TEvents> {
      * @param eventName
      * @param args
      */
-    public broadcast<T extends keyof Events>(eventName: T, args: Events[T]) {
+    public broadcast<T extends keyof OutgoingEvents>(eventName: T, args: OutgoingEvents[T]) {
         this._clients.forEach((client) => {
             client.send(eventName, args);
         });

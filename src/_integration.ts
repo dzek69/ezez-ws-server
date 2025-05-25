@@ -2,7 +2,17 @@ import { EZEZWebsocketServer } from "./index";
 
 const PORT = 6565;
 
-const wss = new EZEZWebsocketServer<{ elo: [string] }>({
+type IncomingEvents = {
+    ping1: [];
+    ping2: [number];
+};
+
+type OutgoingEvents = {
+    pong1: [string];
+    pong2: [];
+};
+
+const wss = new EZEZWebsocketServer<IncomingEvents, OutgoingEvents>({
     port: PORT,
     messagesBeforeAuth: "ignore",
 }, {
@@ -12,7 +22,7 @@ const wss = new EZEZWebsocketServer<{ elo: [string] }>({
     onAuthOk: (client) => {
         // client.send("invalid from server", [true]);
     },
-    onMessage: (eventName, eventData, reply, ids) => {
+    onMessage: (client, eventName, eventData, reply, ids) => {
         console.log("got some message!!!", {
             eventName,
             eventData,

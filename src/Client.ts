@@ -12,10 +12,10 @@ type Deps = {
     unserialize: (rawData: (Buffer | Uint8Array)) => unknown[];
 };
 
-type ClientCallbacks<Events extends TEvents> = MakeOptional<
-    Callbacks<Events>, "onAuthOk" | "onAuthRejected" | "onMessage"
+type ClientCallbacks<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> = MakeOptional<
+    Callbacks<IncomingEvents, OutgoingEvents>, "onAuthOk" | "onAuthRejected" | "onMessage"
 > & {
-    onClose: (client: EZEZServerClient<Events>) => void;
+    onClose: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>) => void;
 };
 
 const AUTH_TIMEOUT = 5000;
@@ -27,7 +27,7 @@ const NOT_FOUND = -1;
 /**
  * Class representing a client connected to the server.
  */
-class EZEZServerClient<Events extends TEvents> {
+class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> {
     private readonly _client: WebSocket;
 
     /**
@@ -40,7 +40,7 @@ class EZEZServerClient<Events extends TEvents> {
      */
     private _authOk: boolean = false;
 
-    private readonly _callbacks: ClientCallbacks<Events>;
+    private readonly _callbacks: ClientCallbacks<IncomingEvents, OutgoingEvents>;
 
     private readonly _options: Required<ClientOptions>;
 
@@ -52,19 +52,36 @@ class EZEZServerClient<Events extends TEvents> {
 
     private readonly _unserialize: (rawData: (Buffer | Uint8Array)) => unknown[];
 
+    /**
+     * Queue of raw messages that were sent before the auth was successful.
+     */
     private readonly _queue: Buffer[] = [];
 
-    private readonly _awaitingReplies: AwaitingReply<Events>[] = [];
+    /**
+     * List of sent messages that are waiting for a reply.
+     */
+    private readonly _awaitingReplies: AwaitingReply<IncomingEvents, OutgoingEvents>[] = [];
 
-    public send: <TEvent extends keyof Events>(
+    /**
+     * Sends a message to the client.
+     * @param eventName - The name of the event to send.
+     * @param args - The arguments to send with the event.
+     * @param onReply - Optional callback to be called when a reply to this specific message is received.
+     */
+    public send: <TEvent extends keyof OutgoingEvents>(
         eventName: TEvent,
-        args: Events[TEvent],
-        onReply?: <REvent extends ReplyTupleUnion<Events, typeof this.send>>(
+        args: OutgoingEvents[TEvent],
+        onReply?: <REvent extends ReplyTupleUnion<
+            IncomingEvents, OutgoingEvents,
+            EZEZServerClient<IncomingEvents, OutgoingEvents>
+        >>(
             ...replyArgs: REvent
         ) => void,
     ) => Ids | undefined;
 
-    public constructor(deps: Deps, callbacks: ClientCallbacks<Events>, options: Required<ClientOptions>) {
+    public constructor(
+        deps: Deps, callbacks: ClientCallbacks<IncomingEvents, OutgoingEvents>, options: Required<ClientOptions>,
+    ) {
         this._client = deps.client;
         this._serialize = deps.serialize;
         this._unserialize = deps.unserialize;
@@ -126,9 +143,9 @@ class EZEZServerClient<Events extends TEvents> {
             return;
         }
 
-        const eventName = data[0] as keyof Events;
+        const eventName = data[0] as keyof IncomingEvents;
         const [, eventId, replyTo, ...args] = data as [
-            keyof Events, number, number | null, ...Events[typeof eventName],
+            keyof IncomingEvents, number, number | null, ...IncomingEvents[typeof eventName],
         ];
 
         if (!this._authOk && this._options.messagesBeforeAuth === "queue") {
@@ -136,7 +153,7 @@ class EZEZServerClient<Events extends TEvents> {
             return;
         }
 
-        type ReplyFn = Parameters<NonNullable<Callbacks<Events>["onMessage"]>>[2];
+        type ReplyFn = Parameters<NonNullable<Callbacks<IncomingEvents, OutgoingEvents>["onMessage"]>>[3];
         const replyFn: ReplyFn = (_eventName, _args, onReply) => this._send(_eventName, _args, eventId, onReply);
 
         if (replyTo) {
@@ -144,21 +161,26 @@ class EZEZServerClient<Events extends TEvents> {
             if (replyIdx !== NOT_FOUND) {
                 const reply = this._awaitingReplies[replyIdx]!;
                 this._awaitingReplies.splice(replyIdx, 1);
-                reply.onReply(eventName, args, replyFn, { eventId, replyTo });
+                reply.onReply(this, eventName, args, replyFn, { eventId, replyTo });
                 return;
             }
         }
 
-        this._callbacks.onMessage?.(eventName, args, replyFn, { eventId, replyTo });
+        this._callbacks.onMessage?.(this, eventName, args, replyFn, { eventId, replyTo });
     };
 
+    /**
+     * Gets whether the client is currently connected and ready.
+     */
     public get alive() {
         return this._client.readyState === WebSocket.OPEN;
     }
 
-    private _send<TEvent extends keyof Events>(
-        eventName: TEvent, args: Events[TEvent], replyId: number | null = null,
-        onReply?: <REvent extends ReplyTupleUnion<Events, typeof this.send>>(
+    private _send<TEvent extends keyof OutgoingEvents>(
+        eventName: TEvent, args: OutgoingEvents[TEvent], replyId: number | null = null,
+        onReply?: <REvent extends ReplyTupleUnion<
+            IncomingEvents, OutgoingEvents, EZEZServerClient<IncomingEvents, OutgoingEvents>
+        >>(
             ...replyArgs: REvent
         ) => void,
     ): Ids | undefined {
@@ -199,6 +221,10 @@ class EZEZServerClient<Events extends TEvents> {
         }
     };
 
+    /**
+     * Gets the connection ID of the client, which is a counter that is incremented for each new client,
+     * starting from 0.
+     */
     public get connectionId(): number {
         return this._connectionId;
     }

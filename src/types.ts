@@ -6,7 +6,7 @@ const EVENT_AUTH = "ezez-ws::auth";
 const EVENT_AUTH_OK = "ezez-ws::auth-ok";
 const EVENT_AUTH_REJECTED = "ezez-ws::auth-rejected";
 
-type ReservedNames = typeof EVENT_AUTH | typeof EVENT_AUTH_OK | typeof EVENT_AUTH_REJECTED;
+type ReservedNames = `ezez-ws::${string}`;
 type ReservedEventKeys<T extends string> = {
     [K in T]?: never;
 };
@@ -17,15 +17,25 @@ type Ids = {
     replyTo: number | null;
 };
 
-type ReplyTupleUnion<Events extends TEvents, reply> = {
-    [K in keyof Events]: [eventName: K, args: Events[K], reply: reply, ids: Ids]
-}[keyof Events];
+type ReplyTupleUnion<
+    IncomingEvents extends TEvents, OutgoingEvents extends TEvents,
+    Client extends EZEZServerClient<IncomingEvents, OutgoingEvents>,
+> = {
+    [K in keyof IncomingEvents]: [
+        client: Client, eventName: K, args: IncomingEvents[K], reply: Client["send"], ids: Ids,
+    ]
+}[keyof IncomingEvents];
 
-type Callbacks<Events extends TEvents> = {
-    onAuthRequest: (client: EZEZServerClient<Events>, auth: string) => Promise<boolean>;
-    onAuthOk?: (client: EZEZServerClient<Events>) => void;
-    onAuthRejected?: (client: EZEZServerClient<Events>, reason: string) => void;
-    onMessage?: <REvent extends ReplyTupleUnion<Events, EZEZServerClient<Events>["send"]>>(
+type Callbacks<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> = {
+    onAuthRequest: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>, auth: string) => Promise<boolean>;
+    onAuthOk?: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>) => void;
+    onAuthRejected?: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>, reason: string) => void;
+    onMessage?: <
+        REvent extends ReplyTupleUnion<
+            IncomingEvents, OutgoingEvents,
+            EZEZServerClient<IncomingEvents, OutgoingEvents>
+        >,
+    >(
         ...replyArgs: REvent
     ) => void;
 };
@@ -34,7 +44,7 @@ type MakeOptional<T, K extends keyof T> = Omit<T, K> & {
     [P in K]?: T[P] | undefined;
 };
 
-type AwaitingReply<Events extends TEvents> = {
+type AwaitingReply<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> = {
     /**
      * Time when registered the need for a reply, used to clean up old listeners that never got the reply
      */
@@ -43,7 +53,7 @@ type AwaitingReply<Events extends TEvents> = {
     /**
      * The callback that will be called when the reply is received.
      */
-    onReply: NonNullable<Callbacks<Events>["onMessage"]>;
+    onReply: NonNullable<Callbacks<IncomingEvents, OutgoingEvents>["onMessage"]>;
 };
 
 type EZEZServerOptions = ServerOptions & {
