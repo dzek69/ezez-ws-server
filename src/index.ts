@@ -1,5 +1,5 @@
 import { WebSocketServer } from "ws";
-import { ensureError, omit, pull, serializeToBuffer, unserializeFromBuffer } from "@ezez/utils";
+import { ensureError, omit, pick, pull, serializeToBuffer, unserializeFromBuffer } from "@ezez/utils";
 
 import type { Callbacks, ClientOptions, EZEZServerOptions, TEvents } from "./types";
 
@@ -10,6 +10,8 @@ type Options = EZEZServerOptions & ClientOptions;
 const defaultOptions: Required<ClientOptions> = {
     messagesBeforeAuth: "ignore",
     sendAfterDisconnect: "ignore",
+    // eslint-disable-next-line @typescript-eslint/no-magic-numbers
+    clearAwaitingRepliesAfterMs: 5 * 60 * 1000, // 5 minutes
 };
 
 class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> {
@@ -27,6 +29,9 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
 
     public constructor(options: Options, callbacks: Callbacks<IncomingEvents, OutgoingEvents>) {
         this._options = { ...defaultOptions, ...options };
+        if (this._options.clearAwaitingRepliesAfterMs <= 0) {
+            throw new Error("`clearAwaitingRepliesAfterMs` must be greater than 0");
+        }
         this._callbacks = callbacks;
 
         this._serialize = serializeToBuffer.bind(null, Buffer, options.serializerArgs ?? []);
@@ -60,10 +65,11 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
                             onAuthOk: this._callbacks.onAuthOk,
                             onAuthRejected: this._callbacks.onAuthRejected,
                             onMessage: this._callbacks.onMessage,
-                        }, {
-                            messagesBeforeAuth: this._options.messagesBeforeAuth,
-                            sendAfterDisconnect: this._options.sendAfterDisconnect,
-                        }),
+                        }, pick(this._options, [
+                            "messagesBeforeAuth",
+                            "sendAfterDisconnect",
+                            "clearAwaitingRepliesAfterMs",
+                        ])),
                     );
                 });
 

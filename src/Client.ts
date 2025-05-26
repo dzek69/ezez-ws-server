@@ -1,17 +1,14 @@
+/* eslint-disable max-lines */
+
 import { noop } from "@ezez/utils";
 // eslint-disable-next-line @typescript-eslint/no-shadow
 import { WebSocket } from "ws";
 import EventEmitter from "eventemitter3";
 
 import type {
-    AwaitingReply,
-    Callbacks,
-    ClientOptions,
-    EventsToEventEmitter,
-    Ids,
-    MakeOptional,
-    ReplyTupleUnion,
-    TEvents,
+    Callbacks, ClientOptions, AwaitingReply,
+    EventsToEventEmitter, ReplyTupleUnion, Ids,
+    MakeOptional, TEvents,
 } from "./types";
 
 import { EVENT_AUTH_OK, EVENT_AUTH_REJECTED, EVENT_AUTH } from "./types";
@@ -24,12 +21,10 @@ type Deps = {
 
 type ClientCallbacks<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> = MakeOptional<
     Callbacks<IncomingEvents, OutgoingEvents>, "onAuthOk" | "onAuthRejected" | "onMessage"
-> & {
-    onClose: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>) => void;
-};
+> & { onClose: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>) => void };
 
-const AUTH_TIMEOUT = 5000;
-
+const AUTH_TIMEOUT = 5_000;
+const AWAITING_REPLIES_INTERVAL = 15_000;
 let _clientCounter = 0;
 const PROTOCOL_VERSION = 1;
 const NOT_FOUND = -1;
@@ -84,9 +79,7 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
         onReply?: <REvent extends ReplyTupleUnion<
             IncomingEvents, OutgoingEvents,
             EZEZServerClient<IncomingEvents, OutgoingEvents>
-        >>(
-            ...replyArgs: REvent
-        ) => void,
+        >>(...replyArgs: REvent) => void,
     ) => Ids | undefined;
 
     private readonly _ee: EventEmitter<EventsToEventEmitter<
@@ -120,6 +113,10 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
         EZEZServerClient<IncomingEvents, OutgoingEvents>
     >>["once"]>;
 
+    private readonly _authTimeoutId: ReturnType<typeof setTimeout>;
+
+    private readonly _awaitingRepliesIntervalId: ReturnType<typeof setInterval>;
+
     public constructor(
         deps: Deps, callbacks: ClientCallbacks<IncomingEvents, OutgoingEvents>, options: Required<ClientOptions>,
     ) {
@@ -133,8 +130,8 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
         this.off = this._ee.off.bind(this._ee);
         this.once = this._ee.once.bind(this._ee);
 
-        // No need to stop this timeout, it won't do anything if auth succeeds
-        setTimeout(this._checkAuthTimeout, AUTH_TIMEOUT);
+        this._authTimeoutId = setTimeout(this._checkAuthTimeout, AUTH_TIMEOUT);
+        this._awaitingRepliesIntervalId = setInterval(this._checkAwaitingReplies, AWAITING_REPLIES_INTERVAL);
         this._client.on("message", this._handleMessage);
         this._client.on("close", this._handleClose);
 
@@ -164,6 +161,7 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
             }
 
             this._callbacks.onAuthRequest(this, authKey).then((isAuthOk) => {
+                clearTimeout(this._authTimeoutId);
                 this._authOk = isAuthOk;
 
                 if (!isAuthOk) {
@@ -176,11 +174,9 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
 
                 this._client.send(this._serialize(EVENT_AUTH_OK));
                 this._callbacks.onAuthOk?.(this);
-                this._queue.forEach(msg => {
-                    this._handleMessage(msg);
-                });
+                this._queue.forEach(this._handleMessage);
                 this._queue.length = 0;
-            }).catch(noop);
+            }).catch(noop); // TODO this noop should be handled properly, in case onAuthRejected crashes for example
             return;
         }
 
@@ -255,8 +251,11 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
     }
 
     private readonly _handleClose = () => {
+        clearTimeout(this._authTimeoutId);
+        clearInterval(this._awaitingRepliesIntervalId);
         this._callbacks.onClose(this);
         this._queue.length = 0;
+        this._awaitingReplies.length = 0;
         this._ee.removeAllListeners();
     };
 
@@ -269,12 +268,29 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
         }
     };
 
+    private readonly _checkAwaitingReplies = () => {
+        const now = Date.now();
+        for (let i = this._awaitingReplies.length - 1; i >= 0; i--) {
+            const reply = this._awaitingReplies[i];
+            if (now - reply!.time > this._options.clearAwaitingRepliesAfterMs) {
+                this._awaitingReplies.splice(i, 1);
+            }
+        }
+    };
+
     /**
      * Gets the connection ID of the client, which is a counter that is incremented for each new client,
      * starting from 0.
      */
     public get connectionId(): number {
         return this._connectionId;
+    }
+
+    /**
+     * Gets the count of messages that are waiting for a reply.
+     */
+    public get awaitingRepliesCount(): number {
+        return this._awaitingReplies.length;
     }
 }
 

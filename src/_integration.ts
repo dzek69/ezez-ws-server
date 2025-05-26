@@ -15,6 +15,7 @@ type OutgoingEvents = {
 const wss = new EZEZWebsocketServer<IncomingEvents, OutgoingEvents>({
     port: PORT,
     messagesBeforeAuth: "ignore",
+    clearAwaitingRepliesAfterMs: 5_000,
 }, {
     onAuthRequest: async (client, auth) => {
         return true;
