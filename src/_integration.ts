@@ -24,8 +24,8 @@ const createWss = (options: Options) => {
         messagesBeforeAuth: "ignore",
         clearAwaitingRepliesAfterMs: 5_000,
     }, {
-        onAuthRequest: async (client, auth) => {
-            return true;
+        onAuthRequest: (client, auth) => {
+            return Promise.resolve(true);
         },
         onAuthOk: (client) => {
         // client.send("invalid from server", [true]);

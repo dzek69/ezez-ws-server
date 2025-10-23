@@ -1,17 +1,17 @@
 /* eslint-disable max-lines */
 
 import { noop } from "@ezez/utils";
+import EventEmitter from "eventemitter3";
 // eslint-disable-next-line @typescript-eslint/no-shadow
 import { WebSocket } from "ws";
-import EventEmitter from "eventemitter3";
 
 import type {
-    Callbacks, ClientOptions, AwaitingReply,
-    EventsToEventEmitter, ReplyTupleUnion, Ids,
-    MakeOptional, TEvents,
+    AwaitingReply,
+    Callbacks, ClientOptions, EventsToEventEmitter, Ids,
+    MakeOptional, ReplyTupleUnion, TEvents,
 } from "./types";
 
-import { EVENT_AUTH_OK, EVENT_AUTH_REJECTED, EVENT_AUTH } from "./types";
+import { EVENT_AUTH, EVENT_AUTH_OK, EVENT_AUTH_REJECTED } from "./types";
 
 type Deps = {
     client: WebSocket;
@@ -243,7 +243,7 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
             this._awaitingReplies.push({
                 time: Date.now(),
                 eventId: this._id,
-                onReply: onReply,
+                onReply,
             });
         }
 

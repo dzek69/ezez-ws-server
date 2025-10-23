@@ -1,5 +1,5 @@
-import { WebSocketServer } from "ws";
 import { ensureError, omit, pick, pull, serializeToBuffer, unserializeFromBuffer } from "@ezez/utils";
+import { WebSocketServer } from "ws";
 
 import type { Callbacks, ClientOptions, EZEZServerOptions, TEvents } from "./types";
 
@@ -56,7 +56,7 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
                 wss.on("connection", (client) => {
                     this._clients.push(
                         new EZEZServerClient<IncomingEvents, OutgoingEvents>({
-                            client: client,
+                            client,
                             serialize: this._serialize,
                             unserialize: this._unserialize,
                         }, {

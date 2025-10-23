@@ -1,5 +1,5 @@
-import type { ServerOptions } from "ws";
 import type { serializeToBuffer, unserializeFromBuffer } from "@ezez/utils";
+import type { ServerOptions } from "ws";
 import type { EZEZServerClient } from "./Client";
 
 const EVENT_AUTH = "ezez-ws::auth";
