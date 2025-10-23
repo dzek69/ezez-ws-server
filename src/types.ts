@@ -98,10 +98,6 @@ type AwaitingReply<IncomingEvents extends TEvents, OutgoingEvents extends TEvent
 
 type EZEZServerOptions = ServerOptions & {
     /**
-     * Port to listen on
-     */
-    port: number;
-    /**
      * Custom data serializer options, see `@ezez/utils - serializeToBuffer`
      * Your custom serializer must be compatible with custom deserializer on the client side
      */

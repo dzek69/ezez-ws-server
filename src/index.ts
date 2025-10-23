@@ -41,7 +41,9 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
     /**
      * Starts the server and begins listening for connections
      */
+    // eslint-disable-next-line max-lines-per-function
     public start() {
+        // eslint-disable-next-line max-lines-per-function
         return new Promise<void>((resolve, reject) => {
             try {
                 const wss = new WebSocketServer(omit(this._options, [
@@ -73,13 +75,19 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
                     );
                 });
 
-                wss.once("listening", () => {
-                    if (fulfilled) {
-                        throw new Error("Unexpected `listening` event after `error`");
-                    }
+                if (this._options.server) {
                     resolve();
                     fulfilled = true;
-                });
+                }
+                else {
+                    wss.once("listening", () => {
+                        if (fulfilled) {
+                            throw new Error("Unexpected `listening` event after `error`");
+                        }
+                        resolve();
+                        fulfilled = true;
+                    });
+                }
 
                 wss.once("error", (e) => {
                     if (fulfilled) {
@@ -134,3 +142,4 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
 }
 
 export { EZEZWebsocketServer };
+export type { Options };
