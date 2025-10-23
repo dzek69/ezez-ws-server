@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@ezez/utils':
-        specifier: ^4.5.0
-        version: 4.5.0
+        specifier: ^4.7.1
+        version: 4.7.1
       bufferutil:
         specifier: ^4.0.8
         version: 4.0.9
@@ -18,8 +18,8 @@ importers:
         specifier: ^5.0.1
         version: 5.0.1
       ws:
-        specifier: ^8.18.0
-        version: 8.18.2(bufferutil@4.0.9)
+        specifier: ^8.18.3
+        version: 8.18.3(bufferutil@4.0.9)
     devDependencies:
       '@babel/core':
         specifier: ^7.24.7
@@ -728,8 +728,8 @@ packages:
       eslint:
         optional: true
 
-  '@ezez/utils@4.5.0':
-    resolution: {integrity: sha512-G/xHBLNYcDxTUS4kV7PGr9DogOEVuUzBhPffSl+YyFUkOaUT2rG9vd8/znO7q1rmVF8btSrRA9fxrOLkMJGquw==}
+  '@ezez/utils@4.7.1':
+    resolution: {integrity: sha512-RWO/jtmpGsbUwl//AdwQcwEyYaQ2IJSr4kieW52DXSmloQO6uU+Dpn2FiY7wXH/TxzrGC/QbAdyO4QMfncZXFw==}
 
   '@fastify/ajv-compiler@1.1.0':
     resolution: {integrity: sha512-gvCOUNpXsWrIQ3A4aXCLIdblL0tDq42BG/2Xw7oxbil9h11uow10ztS2GuFazNBfjbrsZ5nl+nPl5jDSjj5TSg==}
@@ -3083,8 +3083,8 @@ packages:
     resolution: {integrity: sha512-7KxauUdBmSdWnmpaGFg+ppNjKF8uNLry8LyzjauQDOVONfFLNKrKvQOxZ/VuTIcS/gge/YNahf5RIIQWTSarlg==}
     engines: {node: ^12.13.0 || ^14.15.0 || >=16.0.0}
 
-  ws@8.18.2:
-    resolution: {integrity: sha512-DMricUmwGZUVr++AEAe2uiVM7UoO9MAVZMDu05UQOaUII0lp+zOzLLU4Xqh/JvTqklB1T4uELaaPBKyjE1r4fQ==}
+  ws@8.18.3:
+    resolution: {integrity: sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -3932,7 +3932,7 @@ snapshots:
   '@ezez/eslint@0.0.8(eslint@9.26.0)(typescript@5.6.3)':
     dependencies:
       '@eslint/compat': 1.2.9(eslint@9.26.0)
-      '@ezez/utils': 4.5.0
+      '@ezez/utils': 4.7.1
       '@stylistic/eslint-plugin': 2.13.0(eslint@9.26.0)(typescript@5.6.3)
       '@typescript-eslint/eslint-plugin': 7.18.0(@typescript-eslint/parser@7.18.0(eslint@9.26.0)(typescript@5.6.3))(eslint@9.26.0)(typescript@5.6.3)
       '@typescript-eslint/parser': 7.18.0(eslint@9.26.0)(typescript@5.6.3)
@@ -3947,7 +3947,7 @@ snapshots:
       - supports-color
       - typescript
 
-  '@ezez/utils@4.5.0': {}
+  '@ezez/utils@4.7.1': {}
 
   '@fastify/ajv-compiler@1.1.0':
     dependencies:
@@ -6951,7 +6951,7 @@ snapshots:
       imurmurhash: 0.1.4
       signal-exit: 3.0.7
 
-  ws@8.18.2(bufferutil@4.0.9):
+  ws@8.18.3(bufferutil@4.0.9):
     optionalDependencies:
       bufferutil: 4.0.9
 
