@@ -75,7 +75,7 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
                     );
                 });
 
-                if (this._options.server) {
+                if (this._options.server || this._options.noServer) {
                     resolve();
                     fulfilled = true;
                 }
