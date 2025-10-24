@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [UNRELEASED]
 (nothing yet)
 
+## [0.2.2] - 2025-10-24
+### Fixed
+- broken messages with multi bytes characters
+
 ## [0.2.1] - 2025-10-24
 ### Fixed
 - `start()` never resolves on `noServer: true`

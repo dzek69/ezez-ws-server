@@ -4,7 +4,8 @@ import type { Options } from "./index";
 
 import { EZEZWebsocketServer } from "./index";
 
-const USE_FASTIFY = true;
+const USE_FASTIFY = false;
+const MANUAL_FASTIFY = true;
 
 const PORT = 6565;
 
@@ -48,7 +49,7 @@ const createWss = (options: Options) => {
             });
 
             if (eventName === "ping1") {
-                const replyId = reply("pong1", ["true"], /* (client, eventName, args, reply, ids) => {
+                const replyId = reply("pong1", ["óóó"], /* (client, eventName, args, reply, ids) => {
                 console.log("got a reply", eventName);
                 reply("pong2", [], () => {
                     console.log("got a reply to pong2");
@@ -69,12 +70,25 @@ const createWss = (options: Options) => {
     console.info("Will", webServer ? "use" : "not use", "Fastify web server");
 
     const wss = createWss(webServer
-        ? { server: webServer.server }
+        ? (
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+            !MANUAL_FASTIFY ? { server: webServer.server } : { noServer: true }
+        )
         : { port: PORT });
 
     if (webServer) {
         await webServer.listen({ port: PORT });
         console.info("Fastify started on", PORT);
+
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (MANUAL_FASTIFY) {
+            webServer.server.on("upgrade", (request, socket, head) => {
+                // always return 401:
+                socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+                socket.destroy();
+                return;
+            });
+        }
     }
     await wss.start();
     console.info("Websocket server started", webServer ? "with Fastify" : `on port ${PORT}`);
