@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@ezez/utils':
-        specifier: ^4.7.1
-        version: 4.7.1
+        specifier: ^4.7.2
+        version: 4.7.2
       bufferutil:
         specifier: ^4.0.8
         version: 4.0.9
@@ -725,8 +725,8 @@ packages:
     resolution: {integrity: sha512-n4rI3eBkOcszLfFxZM9fmBMeBXWqYaxEfkmC6gEVbmt20sqr13kWwFOahra3cIFl92EufTeQSHe9hrz7duYjdw==}
     hasBin: true
 
-  '@ezez/utils@4.7.1':
-    resolution: {integrity: sha512-RWO/jtmpGsbUwl//AdwQcwEyYaQ2IJSr4kieW52DXSmloQO6uU+Dpn2FiY7wXH/TxzrGC/QbAdyO4QMfncZXFw==}
+  '@ezez/utils@4.7.2':
+    resolution: {integrity: sha512-pUk2KpN2lY7f0KSusg2FwFlD8XK2uAfdqyNVETagNAkG4mDLPsgtuh0szM2UIoqLVUxdsjJ6AqvdPyUchj+UHA==}
 
   '@fastify/ajv-compiler@4.0.5':
     resolution: {integrity: sha512-KoWKW+MhvfTRWL4qrhUwAAZoaChluo0m0vbiJlGMt2GXvL4LVPQEjt8kSpHI3IBq5Rez8fg+XeH3cneztq+C7A==}
@@ -3849,7 +3849,7 @@ snapshots:
       '@ezez/_eslint-plugin-simple-import-sort': eslint-plugin-simple-import-sort@12.1.1(eslint@9.38.0)
       '@ezez/_globals': globals@16.4.0
       '@ezez/eslint-plugin-todo-task-id': 0.1.2(eslint@9.38.0)
-      '@ezez/utils': 4.7.1
+      '@ezez/utils': 4.7.2
       execa: 9.6.0
       ts-deepmerge: 7.0.3
     transitivePeerDependencies:
@@ -3861,7 +3861,7 @@ snapshots:
       - supports-color
       - typescript
 
-  '@ezez/utils@4.7.1': {}
+  '@ezez/utils@4.7.2': {}
 
   '@fastify/ajv-compiler@4.0.5':
     dependencies:
