@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [UNRELEASED]
 (nothing yet)
 
+## [0.2.3] - 2025-12-04
+### Fixed
+- esm build had no files extensions on imports
+
 ## [0.2.2] - 2025-10-24
 ### Fixed
 - broken messages with multi bytes characters

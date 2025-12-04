@@ -43,7 +43,7 @@
         "noUnusedParameters": false,
         "outDir": "./esm",
         "outFile": null,
-        "paths": null,
+        "paths": {},
         "preserveSymlinks": false,
         "preserveValueImports": false,
         "removeComments": true,

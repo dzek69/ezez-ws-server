@@ -1,6 +1,6 @@
 {
   "name": "@ezez/ws-server",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "repository": "git@github.com:dzek69/ezez-ws-server.git",
   "author": "Jacek Nowacki",
   "license": "MIT",
