@@ -21,7 +21,7 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
 
     private _wss: WebSocketServer | null = null;
 
-    private readonly _clients: EZEZServerClient<IncomingEvents, OutgoingEvents>[] = [];
+    private readonly _clients: Array<EZEZServerClient<IncomingEvents, OutgoingEvents>> = [];
 
     private readonly _serialize: (...args: unknown[]) => Buffer;
 

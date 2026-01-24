@@ -5,6 +5,7 @@ import EventEmitter from "eventemitter3";
 // eslint-disable-next-line @typescript-eslint/no-shadow
 import { WebSocket } from "ws";
 
+import type { EZEZWebsocketServer } from "./index";
 import type {
     AwaitingReply,
     Callbacks, ClientOptions, EventsToEventEmitter, Ids,
@@ -65,7 +66,7 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
     /**
      * List of sent messages that are waiting for a reply.
      */
-    private readonly _awaitingReplies: AwaitingReply<IncomingEvents, OutgoingEvents>[] = [];
+    private readonly _awaitingReplies: Array<AwaitingReply<IncomingEvents, OutgoingEvents>> = [];
 
     /**
      * Sends a message to the client.
@@ -292,8 +293,49 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
     public get awaitingRepliesCount(): number {
         return this._awaitingReplies.length;
     }
+
+    /**
+     * Gets raw WebSocket client instance.
+     * Sending messages directly to the WebSocket client is not recommended.
+     */
+    public get client() {
+        return this._client;
+    }
 }
+
+type InferInOut<X extends EZEZWebsocketServer<any, any>> // eslint-disable-line @typescript-eslint/no-explicit-any
+    = X extends EZEZWebsocketServer<infer In, infer Out> ? [In, Out] : never;
+
+/**
+ * Utility type for typing event handler callbacks that can be defined outside of inline `client.on()` calls.
+ *
+ * @template Srv - The server type (use `typeof yourServerInstance`)
+ * @template Ev - The event name (must be a key of IncomingEvents)
+ *
+ * @example
+ * ```typescript
+ * const ws = new EZEZWebsocketServer<IncomingEvents, OutgoingEvents>(...);
+ *
+ * const ping2Handler: OnCallback<typeof ws, "ping2"> = (args, reply, ids) => {
+ *   // args, reply, etc. are typed
+ * };
+ *
+ * client.on("ping2", ping2Handler);
+ * ```
+ */
+type OnCallback<
+    Srv extends EZEZWebsocketServer<any, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+    Ev extends keyof InferInOut<Srv>[0],
+> = EventsToEventEmitter<
+    InferInOut<Srv>[0],
+    InferInOut<Srv>[1],
+    EZEZServerClient<InferInOut<Srv>[0], InferInOut<Srv>[1]>
+>[Ev];
 
 export {
     EZEZServerClient,
+};
+
+export type {
+    OnCallback,
 };

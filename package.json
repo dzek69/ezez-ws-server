@@ -1,6 +1,6 @@
 {
   "name": "@ezez/ws-server",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "repository": "git@github.com:dzek69/ezez-ws-server.git",
   "author": "Jacek Nowacki",
   "license": "MIT",
@@ -16,8 +16,7 @@
     "prepack": "pnpm run compile",
     "prepublishOnly": "pnpm audit && pnpm run lint && pnpm run test && pnpm run docs",
     "prepare": "husky install",
-    "start:dev": "nodemon",
-    "start:dev:compatibility": "TS_NODE_FILES=true pnpm run start:dev",
+    "start:dev": "tsx --watch ./src/_integration.ts",
     "updates": "pnpm dlx npm-check-updates --dep prod",
     "updates:dev": "pnpm dlx npm-check-updates --dep dev",
     "updates:all": "pnpm dlx npm-check-updates"
@@ -37,7 +36,7 @@
     "@babel/core": "^7.26.0",
     "@babel/preset-env": "^7.26.0",
     "@babel/preset-typescript": "^7.26.0",
-    "@ezez/eslint": "^9.37.7",
+    "@ezez/eslint": "^9.39.3",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.5.1",
     "@types/ws": "^8.5.12",
@@ -47,10 +46,9 @@
     "husky": "^8.0.3",
     "jest": "^29.7.0",
     "must": "^0.13.4",
-    "nodemon": "^3.1.9",
     "prettier": "^3.4.2",
     "resolve-tspaths": "^0.8.23",
-    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typedoc": "0.28.4",
     "typescript": "^5.7.3"
   },

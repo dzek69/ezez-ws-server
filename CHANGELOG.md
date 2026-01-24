@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [UNRELEASED]
 (nothing yet)
 
+## [0.2.4] - 2026-01-24
+### Changed
+- added `client` property to EZEZServerClient that gets raw Websocket client instance
+- added `OnCallback` type helper
+
 ## [0.2.3] - 2025-12-04
 ### Fixed
 - esm build had no files extensions on imports

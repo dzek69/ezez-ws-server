@@ -1,5 +1,6 @@
 import fastify from "fastify";
 
+import type { OnCallback } from "./Client";
 import type { Options } from "./index";
 
 import { EZEZWebsocketServer } from "./index";
@@ -20,25 +21,31 @@ type OutgoingEvents = {
 };
 
 const createWss = (options: Options) => {
-    return new EZEZWebsocketServer<IncomingEvents, OutgoingEvents>({
+    const ws = new EZEZWebsocketServer<IncomingEvents, OutgoingEvents>({
         ...options,
         messagesBeforeAuth: "ignore",
         clearAwaitingRepliesAfterMs: 5_000,
     }, {
         onAuthRequest: (client, auth) => {
+            console.info("auth request received:", auth);
             return Promise.resolve(true);
         },
         onAuthOk: (client) => {
-        // client.send("invalid from server", [true]);
-            client.on("ping1", (args, reply) => {
+            console.info("ok");
+            // client.send("invalid from server", [true]);
+            client.on("ping1", (args, reply, ids) => {
                 console.info("ping1");
             });
-            client.on("ping2", (args, reply) => {
+
+            const fn: OnCallback<typeof ws, "ping2"> = (args, reply, ids) => {
                 console.info("got ping2 from client, let's reply with pong2", args);
                 reply("pong2", [], () => {
                     console.info("got inside reply to pong2");
                 });
-            });
+                client.client.send(`{"raw": "message"}`);
+            };
+
+            client.on("ping2", fn);
         },
         onMessage: (client, eventName, eventData, reply, ids) => {
             console.info("got some message!!!", {
@@ -59,6 +66,7 @@ const createWss = (options: Options) => {
             }
         },
     });
+    return ws;
 };
 
 (async () => {
