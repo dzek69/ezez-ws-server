@@ -142,4 +142,4 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
 }
 
 export { EZEZWebsocketServer };
-export type { Options };
+export type { Options, EZEZServerClient };
