@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [UNRELEASED]
 (nothing yet)
 
+## [0.2.6] - 2026-01-28
+### Fixed
+- not being able to receive more than 4 items in a single message
+
 ## [0.2.5] - 2026-01-25
 ### Changed
 - added `EZEZServerClient` type export

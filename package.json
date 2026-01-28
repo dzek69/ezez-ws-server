@@ -1,6 +1,6 @@
 {
   "name": "@ezez/ws-server",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "repository": "git@github.com:dzek69/ezez-ws-server.git",
   "author": "Jacek Nowacki",
   "license": "MIT",
@@ -64,7 +64,7 @@
     "jsx": false
   },
   "dependencies": {
-    "@ezez/utils": "^4.7.2",
+    "@ezez/utils": "^4.8.1",
     "bufferutil": "^4.0.8",
     "eventemitter3": "^5.0.1",
     "ws": "^8.18.3"

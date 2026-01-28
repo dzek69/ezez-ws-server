@@ -12,11 +12,11 @@ const PORT = 6565;
 
 type IncomingEvents = {
     ping1: [];
-    ping2: [number];
+    ping2: [number, number];
 };
 
 type OutgoingEvents = {
-    pong1: [string];
+    pong1: [string, string];
     pong2: [];
 };
 
@@ -34,12 +34,13 @@ const createWss = (options: Options) => {
             console.info("ok");
             // client.send("invalid from server", [true]);
             client.on("ping1", (args, reply, ids) => {
-                console.info("ping1");
+                console.info("ping1", args);
             });
+            client.send("pong1", ["a", "b"]);
 
             const fn: OnCallback<typeof ws, "ping2"> = (args, reply, ids) => {
                 console.info("got ping2 from client, let's reply with pong2", args);
-                reply("pong2", [], () => {
+                reply("pong1", ["x", "d"], () => {
                     console.info("got inside reply to pong2");
                 });
                 client.client.send(`{"raw": "message"}`);
@@ -56,7 +57,7 @@ const createWss = (options: Options) => {
             });
 
             if (eventName === "ping1") {
-                const replyId = reply("pong1", ["óóó"], /* (client, eventName, args, reply, ids) => {
+                const replyId = reply("pong1", ["óóó", "999"], /* (client, eventName, args, reply, ids) => {
                 console.log("got a reply", eventName);
                 reply("pong2", [], () => {
                     console.log("got a reply to pong2");
