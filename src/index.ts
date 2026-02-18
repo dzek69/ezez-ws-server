@@ -68,6 +68,8 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
                             onAuthOk: this._callbacks.onAuthOk,
                             onAuthRejected: this._callbacks.onAuthRejected,
                             onMessage: this._callbacks.onMessage,
+                            onDisconnect: this._callbacks.onDisconnect,
+                            onError: this._callbacks.onError,
                         }, pick(this._options, [
                             "messagesBeforeAuth",
                             "sendAfterDisconnect",

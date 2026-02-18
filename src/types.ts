@@ -78,6 +78,21 @@ type Callbacks<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = 
     >(
         ...replyArgs: REvent
     ) => void;
+    /**
+     * Called when the client disconnects from the server.
+     * @param client - The client that disconnected
+     * @param code - The close code sent by the client
+     * @param reason - The close reason sent by the client
+     */
+    onDisconnect?: (
+        client: EZEZServerClient<IncomingEvents, OutgoingEvents>, code: number, reason: string,
+    ) => void;
+    /**
+     * Called when an error occurs on the client connection.
+     * @param client - The client that encountered an error
+     * @param error - The error that occurred
+     */
+    onError?: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>, error: Error) => void;
 };
 
 type MakeOptional<T, K extends keyof T> = Omit<T, K> & {

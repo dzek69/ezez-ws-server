@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [UNRELEASED]
 (nothing yet)
 
+## [0.3.0] - 2026-02-18
+### Added
+- `onDisconnect` callback
+- `onError` callback
+- `disconnect` method
+
 ## [0.2.7] - 2026-02-18
 ### Fixed
 - `OnCallback` not exported

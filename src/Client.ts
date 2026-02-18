@@ -21,7 +21,7 @@ type Deps = {
 };
 
 type ClientCallbacks<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> = MakeOptional<
-    Callbacks<IncomingEvents, OutgoingEvents>, "onAuthOk" | "onAuthRejected" | "onMessage"
+    Callbacks<IncomingEvents, OutgoingEvents>, "onAuthOk" | "onAuthRejected" | "onMessage" | "onDisconnect" | "onError"
 > & { onClose: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>) => void };
 
 const AUTH_TIMEOUT = 5_000;
@@ -135,6 +135,7 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
         this._awaitingRepliesIntervalId = setInterval(this._checkAwaitingReplies, AWAITING_REPLIES_INTERVAL);
         this._client.on("message", this._handleMessage);
         this._client.on("close", this._handleClose);
+        this._client.on("error", this._handleError);
 
         this.send = (eventName, args, onReply) => {
             return this._send(eventName, args, null, onReply);
@@ -220,6 +221,15 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
         return this._client.readyState === WebSocket.OPEN;
     }
 
+    /**
+     * Disconnects the client from the server.
+     * @param code - Optional close code (default: 1000 - normal closure)
+     * @param reason - Optional close reason string
+     */
+    public disconnect(code?: number, reason?: string) {
+        this._client.close(code, reason);
+    }
+
     private _send<TEvent extends keyof OutgoingEvents>(
         eventName: TEvent, args: OutgoingEvents[TEvent], replyId: number | null = null,
         onReply?: <REvent extends ReplyTupleUnion<
@@ -251,13 +261,18 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
         return { eventId: this._id, replyTo: replyId };
     }
 
-    private readonly _handleClose = () => {
+    private readonly _handleClose = (code: number, reason: Buffer) => {
         clearTimeout(this._authTimeoutId);
         clearInterval(this._awaitingRepliesIntervalId);
+        this._callbacks.onDisconnect?.(this, code, reason.toString());
         this._callbacks.onClose(this);
         this._queue.length = 0;
         this._awaitingReplies.length = 0;
         this._ee.removeAllListeners();
+    };
+
+    private readonly _handleError = (error: Error) => {
+        this._callbacks.onError?.(this, error);
     };
 
     private readonly _checkAuthTimeout = () => {
