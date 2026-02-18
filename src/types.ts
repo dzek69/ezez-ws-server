@@ -2,8 +2,11 @@ import type { serializeToBuffer, unserializeFromBuffer } from "@ezez/utils";
 import type { ServerOptions } from "ws";
 import type { EZEZServerClient } from "./Client";
 
+/** @internal Event name used for authentication requests. */
 const EVENT_AUTH = "ezez-ws::auth";
+/** @internal Event name used to confirm successful authentication. */
 const EVENT_AUTH_OK = "ezez-ws::auth-ok";
+/** @internal Event name used to reject authentication. */
 const EVENT_AUTH_REJECTED = "ezez-ws::auth-rejected";
 
 type ReservedNames = `ezez-ws::${string}`;
@@ -23,11 +26,26 @@ type ReservedEventKeys<T extends string> = {
  */
 type TEvents = Record<string, unknown[]> & ReservedEventKeys<ReservedNames>;
 
+/**
+ * Identifies a message in the protocol. Passed to message handlers and returned from `send()`.
+ *
+ * @property eventId - Unique ID assigned to this message by the sender.
+ * @property replyTo - The `eventId` of the message this is replying to, or `null` if not a reply.
+ */
 type Ids = {
     eventId: number;
     replyTo: number | null;
 };
 
+/**
+ * Union type representing all possible shapes of a reply handler's arguments.
+ *
+ * For each event in `IncomingEvents`, produces a tuple of
+ * `[client, eventName, args, reply, ids]`. The union of all these tuples is used to type
+ * the `onMessage` and `onReply` callback parameters.
+ *
+ * @internal This is primarily used for internal typing of callback signatures.
+ */
 type ReplyTupleUnion<
     IncomingEvents extends TEvents, OutgoingEvents extends TEvents,
     Client extends EZEZServerClient<IncomingEvents, OutgoingEvents>,
@@ -37,6 +55,15 @@ type ReplyTupleUnion<
     ]
 }[keyof IncomingEvents];
 
+/**
+ * Maps event names to their EventEmitter listener signatures.
+ *
+ * For each event in `IncomingEvents`, produces a listener function type
+ * `(args, reply, ids) => void` that is used with {@link EZEZServerClient.on},
+ * {@link EZEZServerClient.off}, and {@link EZEZServerClient.once}.
+ *
+ * @internal This is primarily used for internal typing of the EventEmitter.
+ */
 type EventsToEventEmitter<
     IncomingEvents extends TEvents, OutgoingEvents extends TEvents,
     Client extends EZEZServerClient<IncomingEvents, OutgoingEvents>,
@@ -44,6 +71,11 @@ type EventsToEventEmitter<
     [K in keyof IncomingEvents]: (args: IncomingEvents[K], reply: Client["send"], ids: Ids) => void
 };
 
+/**
+ * Lifecycle callbacks for the WebSocket server.
+ *
+ * Only `onAuthRequest` is required. All other callbacks are optional.
+ */
 type Callbacks<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> = {
     /**
      * Called when the client is requesting authentication. Verify the auth string and return true if the client is
@@ -95,10 +127,18 @@ type Callbacks<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = 
     onError?: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>, error: Error) => void;
 };
 
+/**
+ * Utility type that makes specified keys optional while keeping others unchanged.
+ * @internal
+ */
 type MakeOptional<T, K extends keyof T> = Omit<T, K> & {
     [P in K]?: T[P] | undefined;
 };
 
+/**
+ * Internal structure for tracking a sent message that is waiting for a reply.
+ * @internal
+ */
 type AwaitingReply<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> = {
     /**
      * Time when registered the need for a reply, used to clean up old listeners that never got the reply
@@ -111,6 +151,12 @@ type AwaitingReply<IncomingEvents extends TEvents, OutgoingEvents extends TEvent
     onReply: NonNullable<Callbacks<IncomingEvents, OutgoingEvents>["onMessage"]>;
 };
 
+/**
+ * Server-level options extending the native `ws` `ServerOptions`.
+ *
+ * Includes all options from the `ws` library (such as `port`, `server`, `noServer`, `path`, etc.)
+ * plus optional custom serialization configuration.
+ */
 type EZEZServerOptions = ServerOptions & {
     /**
      * Custom data serializer options, see `@ezez/utils - serializeToBuffer`
@@ -124,6 +170,11 @@ type EZEZServerOptions = ServerOptions & {
     unserializerArgs?: Parameters<typeof unserializeFromBuffer>[1];
 };
 
+/**
+ * Options controlling per-client behavior regarding authentication, disconnection, and reply tracking.
+ *
+ * All fields are optional and have sensible defaults.
+ */
 type ClientOptions = {
     /**
      * How to handle messages before authentication

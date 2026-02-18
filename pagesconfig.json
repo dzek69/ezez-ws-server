@@ -1,8 +1,32 @@
 {
     "pages": [
         {
-            "title": "Test",
-            "source": "./tutorials/Test.md"
+            "title": "Introduction",
+            "source": "./tutorials/00-introduction.md"
+        },
+        {
+            "title": "Getting Started",
+            "source": "./tutorials/01-getting-started.md"
+        },
+        {
+            "title": "Authentication",
+            "source": "./tutorials/02-authentication.md"
+        },
+        {
+            "title": "Events & Messaging",
+            "source": "./tutorials/03-events-and-messaging.md"
+        },
+        {
+            "title": "Reply System",
+            "source": "./tutorials/04-reply-system.md"
+        },
+        {
+            "title": "Server Modes",
+            "source": "./tutorials/05-server-modes.md"
+        },
+        {
+            "title": "Configuration",
+            "source": "./tutorials/06-configuration.md"
         }
     ],
     "source": "tutorials"

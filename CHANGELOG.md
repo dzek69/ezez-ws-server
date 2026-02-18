@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [UNRELEASED]
 (nothing yet)
 
+## [0.4.0] - 2026-02-19
+### Breaking
+- `onMessage` is always called, even for replies
+### Changed
+- added docs
+
 ## [0.3.0] - 2026-02-18
 ### Added
 - `onDisconnect` callback

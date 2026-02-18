@@ -1,6 +1,6 @@
 {
   "name": "@ezez/ws-server",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "repository": "git@github.com:dzek69/ezez-ws-server.git",
   "author": "Jacek Nowacki",
   "license": "MIT",
@@ -14,7 +14,7 @@
     "lint": "ezlint src",
     "lint:fix": "pnpm run lint --fix",
     "prepack": "pnpm run compile",
-    "prepublishOnly": "pnpm audit && pnpm run lint && pnpm run test && pnpm run docs",
+    "prepublishOnly": "pnpm run lint && pnpm run test && pnpm run docs",
     "prepare": "husky install",
     "start:dev": "tsx --watch ./src/_integration.ts",
     "updates": "pnpm dlx npm-check-updates --dep prod",

@@ -6,6 +6,12 @@ import type { Callbacks, ClientOptions, EZEZServerOptions, TEvents } from "./typ
 
 import { EZEZServerClient } from "./Client";
 
+/**
+ * Combined options for the WebSocket server, merging server-level options (from `ws` library)
+ * with client behavior options specific to `@ezez/ws-server`.
+ *
+ * Includes all options from `EZEZServerOptions` and `ClientOptions`.
+ */
 type Options = EZEZServerOptions & ClientOptions;
 
 const defaultOptions: Required<ClientOptions> = {
@@ -15,6 +21,50 @@ const defaultOptions: Required<ClientOptions> = {
     clearAwaitingRepliesAfterMs: 5 * 60 * 1000, // 5 minutes
 };
 
+/**
+ * WebSocket server with built-in authentication, type-safe events, and reply tracking.
+ *
+ * Wraps the native `ws` {@link https://github.com/websockets/ws | WebSocketServer} and provides:
+ * - Type-safe event-based messaging via TypeScript generics
+ * - Built-in authentication flow with configurable timeout
+ * - Message queuing for pre-auth messages
+ * - Reply tracking with automatic cleanup
+ * - Broadcasting to all connected clients
+ *
+ * Supports three operational modes:
+ * - **Standalone** - creates its own HTTP server (pass `port` in options)
+ * - **External server** - attaches to an existing HTTP server (pass `server` in options)
+ * - **Manual upgrade** - no automatic attachment, you handle upgrades yourself (pass `noServer: true`)
+ *
+ * @template IncomingEvents - Map of event names to argument tuples that clients can send to this server
+ * @template OutgoingEvents - Map of event names to argument tuples that this server can send to clients.
+ *   Defaults to `IncomingEvents` if not specified (bidirectional events).
+ *
+ * @example
+ * ```typescript
+ * type FromClient = {
+ *     ping: [message: string];
+ *     getData: [id: number];
+ * };
+ *
+ * type FromServer = {
+ *     pong: [message: string];
+ *     data: [id: number, payload: string];
+ * };
+ *
+ * const server = new EZEZWebsocketServer<FromClient, FromServer>(
+ *     { port: 8080 },
+ *     {
+ *         onAuthRequest: async (client, authKey) => authKey === "secret",
+ *         onAuthOk: (client) => {
+ *             client.send("pong", ["connected!"]);
+ *         },
+ *     },
+ * );
+ *
+ * await server.start();
+ * ```
+ */
 class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> {
     private readonly _options: EZEZServerOptions & Required<ClientOptions>;
 
@@ -28,6 +78,16 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
 
     private readonly _unserialize: (rawData: (Buffer | Uint8Array)) => unknown[];
 
+    /**
+     * Creates a new WebSocket server instance.
+     *
+     * The server is not started until {@link start} is called.
+     *
+     * @param options - Server and client behavior configuration. Must include one of: `port` (standalone),
+     *   `server` (external server), or `noServer: true` (manual upgrade handling).
+     * @param callbacks - Lifecycle callbacks for authentication, messages, disconnections, and errors.
+     * @throws Error if `clearAwaitingRepliesAfterMs` is set to 0 or less.
+     */
     public constructor(options: Options, callbacks: Callbacks<IncomingEvents, OutgoingEvents>) {
         this._options = { ...defaultOptions, ...options };
         if (this._options.clearAwaitingRepliesAfterMs <= 0) {
@@ -40,7 +100,13 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
     }
 
     /**
-     * Starts the server and begins listening for connections
+     * Starts the server and begins listening for connections.
+     *
+     * - In **standalone** mode (with `port`), the promise resolves once the server is listening.
+     * - In **external server** or **noServer** mode, the promise resolves immediately after setup.
+     *
+     * @returns A promise that resolves when the server is ready to accept connections.
+     * @throws Error if the server fails to start (e.g., port is already in use).
      */
     // eslint-disable-next-line max-lines-per-function
     public start() {
@@ -107,9 +173,10 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
     }
 
     /**
-     * Broadcast a message to all clients
-     * @param eventName
-     * @param args
+     * Sends a message to all currently connected and authenticated clients.
+     *
+     * @param eventName - The event name to broadcast.
+     * @param args - The arguments to send with the event.
      */
     public broadcast<T extends keyof OutgoingEvents>(eventName: T, args: OutgoingEvents[T]) {
         this._clients.forEach((client) => {
@@ -118,22 +185,27 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
     }
 
     /**
-     * Gets the list of connected clients
+     * Gets a shallow copy of the list of currently connected clients.
      */
     public get clients() {
         return [...this._clients];
     }
 
     /**
-     * Gets the raw WebSocketServer instance
-     * Warning: sending messages manually will probably result in crashes due to unexpected message format
+     * Gets the underlying `ws` WebSocketServer instance, or `null` if the server is not started or has been closed.
+     *
+     * @remarks
+     * Sending messages directly through this instance will bypass the library's serialization protocol
+     * and will likely cause parsing errors on connected clients.
      */
     public get wss() {
         return this._wss;
     }
 
     /**
-     * Stops the server
+     * Stops the server, closes all client connections, and clears the client list.
+     *
+     * After calling this method, the server can no longer accept connections. The {@link wss} getter will return `null`.
      */
     public close() {
         if (this._wss) {

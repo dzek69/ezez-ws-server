@@ -31,7 +31,20 @@ const PROTOCOL_VERSION = 1;
 const NOT_FOUND = -1;
 
 /**
- * Class representing a client connected to the server.
+ * Represents an individual client connected to the WebSocket server.
+ *
+ * Each instance manages:
+ * - Per-client authentication state and timeout
+ * - Type-safe event listeners via {@link on}, {@link off}, and {@link once}
+ * - Message sending with optional reply tracking via {@link send}
+ * - Automatic cleanup of stale reply listeners
+ *
+ * Instances are created automatically by {@link EZEZWebsocketServer} when a client connects
+ * and are passed to your callbacks (e.g., `onAuthRequest`, `onAuthOk`, `onMessage`).
+ *
+ * @template IncomingEvents - Map of event names to argument tuples that this client can send to the server.
+ * @template OutgoingEvents - Map of event names to argument tuples that the server can send to this client.
+ *   Defaults to `IncomingEvents` if not specified.
  */
 class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> {
     private readonly _client: WebSocket;
@@ -70,9 +83,16 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
 
     /**
      * Sends a message to the client.
+     *
+     * If the client is disconnected, behavior depends on the `sendAfterDisconnect` option:
+     * - `"ignore"` (default): silently returns `undefined`
+     * - `"throw"`: throws an error
+     *
      * @param eventName - The name of the event to send.
      * @param args - The arguments to send with the event.
-     * @param onReply - Optional callback to be called when a reply to this specific message is received.
+     * @param onReply - Optional callback invoked when the client replies to this specific message.
+     *   When a reply arrives and this callback is registered, the reply bypasses any per-event `on()` listeners.
+     * @returns The message `Ids` (containing `eventId` and `replyTo`), or `undefined` if the message was not sent.
      */
     public send: <TEvent extends keyof OutgoingEvents>(
         eventName: TEvent,
@@ -204,6 +224,7 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
             if (replyIdx !== NOT_FOUND) {
                 const reply = this._awaitingReplies[replyIdx]!;
                 this._awaitingReplies.splice(replyIdx, 1);
+                this._callbacks.onMessage?.(this, eventName, args, replyFn, { eventId, replyTo });
                 reply.onReply(this, eventName, args, replyFn, { eventId, replyTo });
                 return;
             }
@@ -215,7 +236,7 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
     };
 
     /**
-     * Gets whether the client is currently connected and ready.
+     * Whether the client's WebSocket connection is currently open and ready to send/receive messages.
      */
     public get alive() {
         return this._client.readyState === WebSocket.OPEN;
@@ -295,8 +316,11 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
     };
 
     /**
-     * Gets the connection ID of the client, which is a counter that is incremented for each new client,
-     * starting from 0.
+     * Unique numeric identifier for this connection, auto-incremented starting from 0
+     * across the lifetime of the server process.
+     *
+     * Useful for logging or tracking individual clients. Note that this counter is global
+     * and does not reset when the server restarts within the same process.
      */
     public get connectionId(): number {
         return this._connectionId;
@@ -310,8 +334,11 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
     }
 
     /**
-     * Gets raw WebSocket client instance.
-     * Sending messages directly to the WebSocket client is not recommended.
+     * The underlying `ws` WebSocket instance for this connection.
+     *
+     * @remarks
+     * Sending messages directly through this instance will bypass the library's serialization protocol
+     * and will likely cause parsing errors on the receiving end. Use {@link send} instead.
      */
     public get client() {
         return this._client;
