@@ -1,6 +1,7 @@
 import { ensureError, omit, pick, pull, serializeToBuffer, unserializeFromBuffer } from "@ezez/utils";
 import { WebSocketServer } from "ws";
 
+import type { OnCallback } from "./Client";
 import type { Callbacks, ClientOptions, EZEZServerOptions, TEvents } from "./types";
 
 import { EZEZServerClient } from "./Client";
@@ -142,4 +143,4 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
 }
 
 export { EZEZWebsocketServer };
-export type { Options, EZEZServerClient };
+export type { Options, EZEZServerClient, OnCallback };
