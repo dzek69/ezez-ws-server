@@ -11,8 +11,13 @@ import { EZEZServerClient } from "./Client";
  * with client behavior options specific to `@ezez/ws-server`.
  *
  * Includes all options from `EZEZServerOptions` and `ClientOptions`.
+ *
+ * When the `TContext` generic is specified, `defaultContext` becomes a required field, used to seed each connected client's `context` (via `structuredClone`).
  */
-type Options = EZEZServerOptions & ClientOptions;
+type Options<TContext extends object = Record<string, never>>
+    = [TContext] extends [Record<string, never>]
+        ? EZEZServerOptions & ClientOptions & { defaultContext?: TContext }
+        : EZEZServerOptions & ClientOptions & { defaultContext: TContext };
 
 const defaultOptions: Required<ClientOptions> = {
     messagesBeforeAuth: "ignore",
@@ -39,6 +44,9 @@ const defaultOptions: Required<ClientOptions> = {
  * @template IncomingEvents - Map of event names to argument tuples that clients can send to this server
  * @template OutgoingEvents - Map of event names to argument tuples that this server can send to clients.
  *   Defaults to `IncomingEvents` if not specified (bidirectional events).
+ * @template TContext - Shape of the per-client mutable context bag accessible via `client.context`.
+ *   Defaults to `Record<string, never>` (no context) if not specified. When set, you must provide a
+ *   `defaultContext` option that will be `structuredClone`d into each new client.
  *
  * @example
  * ```typescript
@@ -65,14 +73,20 @@ const defaultOptions: Required<ClientOptions> = {
  * await server.start();
  * ```
  */
-class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> {
+class EZEZWebsocketServer<
+    IncomingEvents extends TEvents,
+    OutgoingEvents extends TEvents = IncomingEvents,
+    TContext extends object = Record<string, never>,
+> {
     private readonly _options: EZEZServerOptions & Required<ClientOptions>;
 
-    private readonly _callbacks: Callbacks<IncomingEvents, OutgoingEvents>;
+    private readonly _defaultContext: TContext;
+
+    private readonly _callbacks: Callbacks<IncomingEvents, OutgoingEvents, TContext>;
 
     private _wss: WebSocketServer | null = null;
 
-    private readonly _clients: Array<EZEZServerClient<IncomingEvents, OutgoingEvents>> = [];
+    private readonly _clients: Array<EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>> = [];
 
     private readonly _serialize: (...args: unknown[]) => Buffer;
 
@@ -88,11 +102,17 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
      * @param callbacks - Lifecycle callbacks for authentication, messages, disconnections, and errors.
      * @throws Error if `clearAwaitingRepliesAfterMs` is set to 0 or less.
      */
-    public constructor(options: Options, callbacks: Callbacks<IncomingEvents, OutgoingEvents>) {
-        this._options = { ...defaultOptions, ...options };
+    public constructor(
+        options: Options<TContext>, callbacks: Callbacks<IncomingEvents, OutgoingEvents, TContext>,
+    ) {
+        const {
+            defaultContext, ...rest
+        } = options as EZEZServerOptions & ClientOptions & { defaultContext?: TContext };
+        this._options = { ...defaultOptions, ...rest };
         if (this._options.clearAwaitingRepliesAfterMs <= 0) {
             throw new Error("`clearAwaitingRepliesAfterMs` must be greater than 0");
         }
+        this._defaultContext = (defaultContext ?? {}) as TContext;
         this._callbacks = callbacks;
 
         this._serialize = serializeToBuffer.bind(null, Buffer, options.serializerArgs ?? []);
@@ -122,10 +142,11 @@ class EZEZWebsocketServer<IncomingEvents extends TEvents, OutgoingEvents extends
 
                 wss.on("connection", (client) => {
                     this._clients.push(
-                        new EZEZServerClient<IncomingEvents, OutgoingEvents>({
+                        new EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>({
                             client,
                             serialize: this._serialize,
                             unserialize: this._unserialize,
+                            context: structuredClone(this._defaultContext),
                         }, {
                             onClose: (cl) => {
                                 pull(this._clients, cl);

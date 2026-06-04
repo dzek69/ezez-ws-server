@@ -47,8 +47,8 @@ type Ids = {
  * @internal This is primarily used for internal typing of callback signatures.
  */
 type ReplyTupleUnion<
-    IncomingEvents extends TEvents, OutgoingEvents extends TEvents,
-    Client extends EZEZServerClient<IncomingEvents, OutgoingEvents>,
+    IncomingEvents extends TEvents,
+    Client extends { send: unknown },
 > = {
     [K in keyof IncomingEvents]: [
         client: Client, eventName: K, args: IncomingEvents[K], reply: Client["send"], ids: Ids,
@@ -65,8 +65,8 @@ type ReplyTupleUnion<
  * @internal This is primarily used for internal typing of the EventEmitter.
  */
 type EventsToEventEmitter<
-    IncomingEvents extends TEvents, OutgoingEvents extends TEvents,
-    Client extends EZEZServerClient<IncomingEvents, OutgoingEvents>,
+    IncomingEvents extends TEvents,
+    Client extends { send: unknown },
 > = {
     [K in keyof IncomingEvents]: (args: IncomingEvents[K], reply: Client["send"], ids: Ids) => void
 };
@@ -76,7 +76,11 @@ type EventsToEventEmitter<
  *
  * Only `onAuthRequest` is required. All other callbacks are optional.
  */
-type Callbacks<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> = {
+type Callbacks<
+    IncomingEvents extends TEvents,
+    OutgoingEvents extends TEvents = IncomingEvents,
+    TContext extends object = Record<string, never>,
+> = {
     /**
      * Called when the client is requesting authentication. Verify the auth string and return true if the client is
      * allowed to connect or false if the client should be rejected.
@@ -84,19 +88,23 @@ type Callbacks<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = 
      * @param client - The client that is requesting authentication
      * @param auth - The authentication string sent by the client
      */
-    onAuthRequest: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>, auth: string) => Promise<boolean>;
+    onAuthRequest: (
+        client: EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>, auth: string,
+    ) => Promise<boolean>;
     /**
      * Called when the client is authenticated successfully.
      * Use this to set up the client, e.g. send initial data or set up listeners.
      * @param client - The client that was authenticated
      */
-    onAuthOk?: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>) => void;
+    onAuthOk?: (client: EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>) => void;
     /**
      * Called when the authentication for given client is rejected
      * @param client - The client that was rejected
      * @param reason - The reason for the rejection, can be used to display a message on the client's UI
      */
-    onAuthRejected?: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>, reason: string) => void;
+    onAuthRejected?: (
+        client: EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>, reason: string,
+    ) => void;
     /**
      * Called when a message (any event) is received from the client.
      * Use {@link EZEZServerClient.on} to listen for specific events.
@@ -104,8 +112,8 @@ type Callbacks<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = 
      */
     onMessage?: <
         REvent extends ReplyTupleUnion<
-            IncomingEvents, OutgoingEvents,
-            EZEZServerClient<IncomingEvents, OutgoingEvents>
+            IncomingEvents,
+            EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>
         >,
     >(
         ...replyArgs: REvent
@@ -117,14 +125,14 @@ type Callbacks<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = 
      * @param reason - The close reason sent by the client
      */
     onDisconnect?: (
-        client: EZEZServerClient<IncomingEvents, OutgoingEvents>, code: number, reason: string,
+        client: EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>, code: number, reason: string,
     ) => void;
     /**
      * Called when an error occurs on the client connection.
      * @param client - The client that encountered an error
      * @param error - The error that occurred
      */
-    onError?: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>, error: Error) => void;
+    onError?: (client: EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>, error: Error) => void;
 };
 
 /**
@@ -139,7 +147,11 @@ type MakeOptional<T, K extends keyof T> = Omit<T, K> & {
  * Internal structure for tracking a sent message that is waiting for a reply.
  * @internal
  */
-type AwaitingReply<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> = {
+type AwaitingReply<
+    IncomingEvents extends TEvents,
+    OutgoingEvents extends TEvents = IncomingEvents,
+    TContext extends object = Record<string, never>,
+> = {
     /**
      * Time when registered the need for a reply, used to clean up old listeners that never got the reply
      */
@@ -148,7 +160,7 @@ type AwaitingReply<IncomingEvents extends TEvents, OutgoingEvents extends TEvent
     /**
      * The callback that will be called when the reply is received.
      */
-    onReply: NonNullable<Callbacks<IncomingEvents, OutgoingEvents>["onMessage"]>;
+    onReply: NonNullable<Callbacks<IncomingEvents, OutgoingEvents, TContext>["onMessage"]>;
 };
 
 /**

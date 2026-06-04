@@ -45,6 +45,7 @@ You can customize the process by providing custom serializers/deserializers.
 | `messagesBeforeAuth` | `"ignore" \| "queue" \| "accept"` | `"ignore"` | How to handle messages received before authentication completes |
 | `sendAfterDisconnect` | `"ignore" \| "throw"` | `"ignore"` | What happens when you try to send a message to a disconnected client |
 | `clearAwaitingRepliesAfterMs` | `number` | `300000` (5 min) | How long to wait before cleaning up unanswered reply callbacks. Must be greater than 0. |
+| `defaultContext` | `TContext` | `{}` | Initial value for `client.context`, deep-cloned per connection via `structuredClone`. Required when the `TContext` generic is specified, optional otherwise. See the **Per-Client Context** page. |
 
 #### `messagesBeforeAuth`
 

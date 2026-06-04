@@ -21,12 +21,16 @@
             "source": "./tutorials/04-reply-system.md"
         },
         {
+            "title": "Per-Client Context",
+            "source": "./tutorials/05-client-context.md"
+        },
+        {
             "title": "Server Modes",
-            "source": "./tutorials/05-server-modes.md"
+            "source": "./tutorials/06-server-modes.md"
         },
         {
             "title": "Configuration",
-            "source": "./tutorials/06-configuration.md"
+            "source": "./tutorials/07-configuration.md"
         }
     ],
     "source": "tutorials"

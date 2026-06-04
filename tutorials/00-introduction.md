@@ -68,6 +68,15 @@ client.on("instantMessage", (data, reply) => {
 });
 ```
 
+### Per-Client Context
+
+Every connected client comes with a typed, mutable `context` bag — a per-connection state object you fill with whatever you need: authenticated user info, room memberships, counters. The shape is declared via a generic and the server seeds each client from a `defaultContext` you provide (deep-cloned per client).
+
+```typescript
+client.context.userId = user.id;
+client.context.rooms.push("vip");
+```
+
 ### Server Modes
 
 The library supports three ways to run:

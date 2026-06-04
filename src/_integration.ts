@@ -20,26 +20,55 @@ type OutgoingEvents = {
     pong2: [];
 };
 
+type ClientContext = {
+    userId: number | null;
+    nickname: string;
+    pingCount: number;
+    rooms: string[];
+};
+
+/* eslint-disable no-param-reassign */
+// eslint-disable-next-line max-lines-per-function
 const createWss = (options: Options) => {
-    const ws = new EZEZWebsocketServer<IncomingEvents, OutgoingEvents>({
+    const ws = new EZEZWebsocketServer<IncomingEvents, OutgoingEvents, ClientContext>({
         ...options,
         messagesBeforeAuth: "ignore",
         clearAwaitingRepliesAfterMs: 5_000,
+        defaultContext: {
+            userId: null,
+            nickname: "anonymous",
+            pingCount: 0,
+            rooms: ["lobby"],
+        },
     }, {
         onAuthRequest: (client, auth) => {
-            console.info("auth request received:", auth);
+            console.info("auth request received:", auth, "| default ctx:", client.context);
+            // pretend the auth string is "userId:nickname", e.g. "42:alice"
+            const [rawId, nick] = auth.split(":");
+            client.context.userId = Number(rawId) || 0;
+            client.context.nickname = nick ?? "anonymous";
             return Promise.resolve(true);
         },
         onAuthOk: (client) => {
-            console.info("ok");
-            // client.send("invalid from server", [true]);
+            console.info("ok | ctx after auth:", client.context);
+            client.context.rooms.push("authenticated");
+
             client.on("ping1", (args, reply, ids) => {
-                console.info("ping1", args);
+                client.context.pingCount++;
+                console.info(
+                    `ping1 from #${client.connectionId} (${client.context.nickname}),`
+                    + ` total pings: ${client.context.pingCount}`,
+                    "| rooms:", client.context.rooms,
+                );
             });
             client.send("pong1", ["a", "b"]);
 
             const fn: OnCallback<typeof ws, "ping2"> = (args, reply, ids) => {
-                console.info("got ping2 from client, let's reply with pong2", args);
+                client.context.pingCount++;
+                console.info(
+                    `ping2 from ${client.context.nickname}, total: ${client.context.pingCount}`,
+                    "args:", args,
+                );
                 reply("pong1", ["x", "d"], () => {
                     console.info("got inside reply to pong2");
                 });
@@ -54,21 +83,38 @@ const createWss = (options: Options) => {
                 eventData,
                 reply,
                 ids,
+                userId: client.context.userId,
+                nickname: client.context.nickname,
             });
 
             if (eventName === "ping1") {
-                const replyId = reply("pong1", ["óóó", "999"], /* (client, eventName, args, reply, ids) => {
-                console.log("got a reply", eventName);
-                reply("pong2", [], () => {
-                    console.log("got a reply to pong2");
-                });
-            } */);
+                const replyId = reply("pong1", ["óóó", "999"]);
                 console.info("replied to", ids.eventId, "with", replyId);
             }
         },
+        onDisconnect: (client, code, reason) => {
+            console.info(
+                `client #${client.connectionId} (${client.context.nickname}) disconnected,`
+                + ` had ${client.context.pingCount} pings, code=${code}, reason=${reason}`,
+            );
+        },
     });
+
+    // sanity check: every 3s log all clients' contexts
+    setInterval(() => {
+        if (ws.clients.length === 0) {
+            return;
+        }
+        console.info("--- contexts snapshot ---");
+        ws.clients.forEach((c) => {
+            console.info(`  #${c.connectionId}:`, c.context);
+        });
+    // eslint-disable-next-line @typescript-eslint/no-magic-numbers
+    }, 3000);
+
     return ws;
 };
+/* eslint-enable no-param-reassign */
 
 (async () => {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition

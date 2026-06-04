@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [UNRELEASED]
 (nothing yet)
 
+## [0.5.0] - 2026-06-04
+### Added
+- `context` prop for each connected client
+
 ## [0.4.0] - 2026-02-19
 ### Breaking
 - `onMessage` is always called, even for replies

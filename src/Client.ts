@@ -14,15 +14,21 @@ import type {
 
 import { EVENT_AUTH, EVENT_AUTH_OK, EVENT_AUTH_REJECTED } from "./types";
 
-type Deps = {
+type Deps<TContext extends object> = {
     client: WebSocket;
     serialize: (...args: unknown[]) => Buffer;
     unserialize: (rawData: (Buffer | Uint8Array)) => unknown[];
+    context: TContext;
 };
 
-type ClientCallbacks<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> = MakeOptional<
-    Callbacks<IncomingEvents, OutgoingEvents>, "onAuthOk" | "onAuthRejected" | "onMessage" | "onDisconnect" | "onError"
-> & { onClose: (client: EZEZServerClient<IncomingEvents, OutgoingEvents>) => void };
+type ClientCallbacks<
+    IncomingEvents extends TEvents,
+    OutgoingEvents extends TEvents = IncomingEvents,
+    TContext extends object = Record<string, never>,
+> = MakeOptional<
+    Callbacks<IncomingEvents, OutgoingEvents, TContext>,
+    "onAuthOk" | "onAuthRejected" | "onMessage" | "onDisconnect" | "onError"
+> & { onClose: (client: EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>) => void };
 
 const AUTH_TIMEOUT = 5_000;
 const AWAITING_REPLIES_INTERVAL = 15_000;
@@ -45,9 +51,24 @@ const NOT_FOUND = -1;
  * @template IncomingEvents - Map of event names to argument tuples that this client can send to the server.
  * @template OutgoingEvents - Map of event names to argument tuples that the server can send to this client.
  *   Defaults to `IncomingEvents` if not specified.
+ * @template TContext - Shape of the per-client mutable context bag accessible via {@link context}.
+ *   Defaults to `Record<string, never>` (no context) if not specified.
  */
-class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TEvents = IncomingEvents> {
+class EZEZServerClient<
+    IncomingEvents extends TEvents,
+    OutgoingEvents extends TEvents = IncomingEvents,
+    TContext extends object = Record<string, never>,
+> {
     private readonly _client: WebSocket;
+
+    /**
+     * Per-client mutable context bag. Read and write freely to attach state to a specific client connection
+     * (e.g., authenticated user info, subscriptions, room memberships).
+     *
+     * Initialized from the server's `defaultContext` option via `structuredClone`, so each client starts with an
+     * independent copy. Shape is typed via the `TContext` generic on {@link EZEZWebsocketServer}.
+     */
+    public context: TContext;
 
     /**
      * Did the client send an auth message (this does not indicate the auth success)
@@ -59,7 +80,7 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
      */
     private _authOk: boolean = false;
 
-    private readonly _callbacks: ClientCallbacks<IncomingEvents, OutgoingEvents>;
+    private readonly _callbacks: ClientCallbacks<IncomingEvents, OutgoingEvents, TContext>;
 
     private readonly _options: Required<ClientOptions>;
 
@@ -79,7 +100,7 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
     /**
      * List of sent messages that are waiting for a reply.
      */
-    private readonly _awaitingReplies: Array<AwaitingReply<IncomingEvents, OutgoingEvents>> = [];
+    private readonly _awaitingReplies: Array<AwaitingReply<IncomingEvents, OutgoingEvents, TContext>> = [];
 
     /**
      * Sends a message to the client.
@@ -98,14 +119,14 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
         eventName: TEvent,
         args: OutgoingEvents[TEvent],
         onReply?: <REvent extends ReplyTupleUnion<
-            IncomingEvents, OutgoingEvents,
-            EZEZServerClient<IncomingEvents, OutgoingEvents>
+            IncomingEvents,
+            EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>
         >>(...replyArgs: REvent) => void,
     ) => Ids | undefined;
 
     private readonly _ee: EventEmitter<EventsToEventEmitter<
-        IncomingEvents, OutgoingEvents,
-        EZEZServerClient<IncomingEvents, OutgoingEvents>
+        IncomingEvents,
+        EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>
     >>;
 
     /**
@@ -113,16 +134,16 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
      * Please note that if a message is a reply and `onReply` function was given, then this listener will not be called.
      */
     public readonly on: OmitThisParameter<EventEmitter<EventsToEventEmitter<
-        IncomingEvents, OutgoingEvents,
-        EZEZServerClient<IncomingEvents, OutgoingEvents>
+        IncomingEvents,
+        EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>
     >>["on"]>;
 
     /**
      * Unregisters an event listener for given event.
      */
     public readonly off: OmitThisParameter<EventEmitter<EventsToEventEmitter<
-        IncomingEvents, OutgoingEvents,
-        EZEZServerClient<IncomingEvents, OutgoingEvents>
+        IncomingEvents,
+        EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>
     >>["off"]>;
 
     /**
@@ -130,20 +151,24 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
      * Please note that if a message is a reply and `onReply` function was given, then this listener will not be called.
      */
     public readonly once: OmitThisParameter<EventEmitter<EventsToEventEmitter<
-        IncomingEvents, OutgoingEvents,
-        EZEZServerClient<IncomingEvents, OutgoingEvents>
+        IncomingEvents,
+        EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>
     >>["once"]>;
 
     private readonly _authTimeoutId: ReturnType<typeof setTimeout>;
 
     private readonly _awaitingRepliesIntervalId: ReturnType<typeof setInterval>;
 
+    // eslint-disable-next-line max-statements
     public constructor(
-        deps: Deps, callbacks: ClientCallbacks<IncomingEvents, OutgoingEvents>, options: Required<ClientOptions>,
+        deps: Deps<TContext>,
+        callbacks: ClientCallbacks<IncomingEvents, OutgoingEvents, TContext>,
+        options: Required<ClientOptions>,
     ) {
         this._client = deps.client;
         this._serialize = deps.serialize;
         this._unserialize = deps.unserialize;
+        this.context = deps.context;
         this._callbacks = callbacks;
         this._options = options;
         this._ee = new EventEmitter();
@@ -216,7 +241,9 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
             return;
         }
 
-        type ReplyFn = Parameters<NonNullable<Callbacks<IncomingEvents, OutgoingEvents>["onMessage"]>>[3];
+        type ReplyFn = Parameters<
+            NonNullable<Callbacks<IncomingEvents, OutgoingEvents, TContext>["onMessage"]>
+        >[3];
         const replyFn: ReplyFn = (_eventName, _args, onReply) => this._send(_eventName, _args, eventId, onReply);
 
         if (replyTo) {
@@ -254,7 +281,7 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
     private _send<TEvent extends keyof OutgoingEvents>(
         eventName: TEvent, args: OutgoingEvents[TEvent], replyId: number | null = null,
         onReply?: <REvent extends ReplyTupleUnion<
-            IncomingEvents, OutgoingEvents, EZEZServerClient<IncomingEvents, OutgoingEvents>
+            IncomingEvents, EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>
         >>(
             ...replyArgs: REvent
         ) => void,
@@ -345,8 +372,10 @@ class EZEZServerClient<IncomingEvents extends TEvents, OutgoingEvents extends TE
     }
 }
 
-type InferInOut<X extends EZEZWebsocketServer<any, any>> // eslint-disable-line @typescript-eslint/no-explicit-any
-    = X extends EZEZWebsocketServer<infer In, infer Out> ? [In, Out] : never;
+type InferInOutCtx<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    X extends EZEZWebsocketServer<any, any, any>,
+> = X extends EZEZWebsocketServer<infer In, infer Out, infer Ctx> ? [In, Out, Ctx] : never;
 
 /**
  * Utility type for typing event handler callbacks that can be defined outside of inline `client.on()` calls.
@@ -366,12 +395,12 @@ type InferInOut<X extends EZEZWebsocketServer<any, any>> // eslint-disable-line 
  * ```
  */
 type OnCallback<
-    Srv extends EZEZWebsocketServer<any, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
-    Ev extends keyof InferInOut<Srv>[0],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Srv extends EZEZWebsocketServer<any, any, any>,
+    Ev extends keyof InferInOutCtx<Srv>[0],
 > = EventsToEventEmitter<
-    InferInOut<Srv>[0],
-    InferInOut<Srv>[1],
-    EZEZServerClient<InferInOut<Srv>[0], InferInOut<Srv>[1]>
+    InferInOutCtx<Srv>[0],
+    EZEZServerClient<InferInOutCtx<Srv>[0], InferInOutCtx<Srv>[1], InferInOutCtx<Srv>[2]>
 >[Ev];
 
 export {
