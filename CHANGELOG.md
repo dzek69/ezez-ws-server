@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [UNRELEASED]
 (nothing yet)
 
+## [0.5.1] - 2026-06-04
+### Dev
+- deps bump
+
 ## [0.5.0] - 2026-06-04
 ### Added
 - `context` prop for each connected client
