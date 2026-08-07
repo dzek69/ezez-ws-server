@@ -81,6 +81,12 @@ class EZEZServerClient<
      */
     private _authOk: boolean = false;
 
+    /**
+     * Was the client rejected (auth failure, protocol mismatch or auth timeout).
+     * `close()` is asynchronous, so frames already buffered can still arrive - they must be dropped.
+     */
+    private _authRejected: boolean = false;
+
     private readonly _callbacks: ClientCallbacks<IncomingEvents, OutgoingEvents, TContext>;
 
     private readonly _options: Required<ClientOptions>;
@@ -195,6 +201,10 @@ class EZEZServerClient<
             return;
         }
 
+        if (this._authRejected) {
+            return;
+        }
+
         let data: unknown[];
         try {
             data = this._unserialize(message);
@@ -206,11 +216,17 @@ class EZEZServerClient<
             return;
         }
         if (data[0] === EVENT_AUTH) {
+            if (this._authSent) {
+                // Only one auth attempt per connection - repeated frames would allow pipelined brute-force
+                // (every frame hitting `onAuthRequest`) and could re-fire `onAuthOk`
+                return;
+            }
             const [, authKey, protocolVersion] = data as [string, string, number];
             this._authSent = true;
 
             if (protocolVersion !== PROTOCOL_VERSION) {
                 this._authOk = false;
+                this._authRejected = true;
                 const reason = `Protocol version mismatch, wanted ${PROTOCOL_VERSION}, got ${protocolVersion}`;
                 this._client.send(this._serialize(EVENT_AUTH_REJECTED, reason));
                 this._callbacks.onAuthRejected?.(this, reason);
@@ -220,9 +236,14 @@ class EZEZServerClient<
 
             this._callbacks.onAuthRequest(this, authKey).then((isAuthOk) => {
                 clearTimeout(this._authTimeoutId);
+                if (this._authRejected || !this.alive) {
+                    // Rejected or disconnected while `onAuthRequest` was pending - don't resurrect the client
+                    return;
+                }
                 this._authOk = isAuthOk;
 
                 if (!isAuthOk) {
+                    this._authRejected = true;
                     const reason = "Invalid auth key";
                     this._client.send(this._serialize(EVENT_AUTH_REJECTED, reason));
                     this._callbacks.onAuthRejected?.(this, reason);
@@ -347,6 +368,7 @@ class EZEZServerClient<
 
     private readonly _checkAuthTimeout = () => {
         if (!this._authSent) {
+            this._authRejected = true;
             const reason = "Auth timeout";
             this._client.send(this._serialize(EVENT_AUTH_REJECTED, reason));
             this._callbacks.onAuthRejected?.(this, reason);

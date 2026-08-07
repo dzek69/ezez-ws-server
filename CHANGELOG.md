@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 - crash on malformed data
 - `broadcast` sending messages to unauthenticated clients
+- repeated auth requests were handled, now they are rejected to avoid confusion and attacks
 
 ## [0.5.1] - 2026-06-04
 ### Dev
