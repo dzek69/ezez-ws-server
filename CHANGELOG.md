@@ -6,6 +6,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [UNRELEASED]
 ### Fixed
 - crash on malformed data
+- `broadcast` sending messages to unauthenticated clients
 
 ## [0.5.1] - 2026-06-04
 ### Dev

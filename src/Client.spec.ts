@@ -112,4 +112,46 @@ describe("EZEZServerClient", () => {
             }
         });
     });
+
+    describe("broadcast", () => {
+        it("reaches authenticated clients but skips unauthenticated ones", async () => {
+            const { server, port } = await startServer();
+
+            try {
+                const authed = await connect(port);
+                await authenticate(authed);
+
+                const unauthed = await connect(port);
+                // deliberately not authenticated
+
+                let authedGotPing = false;
+                authed.on("message", (rawData) => {
+                    const text = Buffer.isBuffer(rawData) ? rawData.toString("utf8") : "";
+                    if (text.includes("ping")) {
+                        authedGotPing = true;
+                    }
+                });
+
+                let unauthedGotAnything = false;
+                unauthed.on("message", () => { unauthedGotAnything = true; });
+
+                server.broadcast("ping", ["hello"]);
+
+                // give the event loop time to deliver any (wrongly) sent frames
+                await new Promise<void>((resolve) => {
+                    const timer = setTimeout(resolve, 200);
+                    timer.unref?.();
+                });
+
+                must(authedGotPing).be.true();
+                must(unauthedGotAnything).be.false();
+
+                authed.close();
+                unauthed.close();
+            }
+            finally {
+                server.close();
+            }
+        });
+    });
 });

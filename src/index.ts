@@ -196,11 +196,17 @@ class EZEZWebsocketServer<
     /**
      * Sends a message to all currently connected and authenticated clients.
      *
+     * Clients that have not (yet) authenticated are skipped, so a broadcast never leaks data to an
+     * unauthenticated connection. To reach a specific unauthenticated client, use its own `send` method.
+     *
      * @param eventName - The event name to broadcast.
      * @param args - The arguments to send with the event.
      */
     public broadcast<T extends keyof OutgoingEvents>(eventName: T, args: OutgoingEvents[T]) {
         this._clients.forEach((client) => {
+            if (!client.authenticated) {
+                return;
+            }
             client.send(eventName, args);
         });
     }

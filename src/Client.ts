@@ -281,6 +281,17 @@ class EZEZServerClient<
     }
 
     /**
+     * Whether the client has successfully authenticated.
+     *
+     * Use this to decide whether it is safe to send sensitive data to a specific client, e.g. when
+     * filtering {@link EZEZWebsocketServer.clients} manually. Note that {@link EZEZWebsocketServer.broadcast}
+     * already skips clients that are not authenticated.
+     */
+    public get authenticated() {
+        return this._authOk;
+    }
+
+    /**
      * Disconnects the client from the server.
      * @param code - Optional close code (default: 1000 - normal closure)
      * @param reason - Optional close reason string
