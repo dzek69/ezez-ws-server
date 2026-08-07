@@ -4,7 +4,8 @@ The format is based on [EZEZ Changelog](https://ezez.dev/changelog/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [UNRELEASED]
-(nothing yet)
+### Fixed
+- crash on malformed data
 
 ## [0.5.1] - 2026-06-04
 ### Dev

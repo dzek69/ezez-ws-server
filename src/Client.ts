@@ -1,6 +1,6 @@
 /* eslint-disable max-lines */
 
-import { noop } from "@ezez/utils";
+import { ensureError, noop } from "@ezez/utils";
 import EventEmitter from "eventemitter3";
 // eslint-disable-next-line @typescript-eslint/no-shadow
 import { WebSocket } from "ws";
@@ -35,6 +35,7 @@ const AWAITING_REPLIES_INTERVAL = 15_000;
 let _clientCounter = 0;
 const PROTOCOL_VERSION = 1;
 const NOT_FOUND = -1;
+const CLOSE_PROTOCOL_ERROR = 1002;
 
 /**
  * Represents an individual client connected to the WebSocket server.
@@ -193,7 +194,17 @@ class EZEZServerClient<
             // Whatever this is, it's officially not supported
             return;
         }
-        const data = this._unserialize(message);
+
+        let data: unknown[];
+        try {
+            data = this._unserialize(message);
+        }
+        catch (e) {
+            // Malformed data - without this try/catch a single garbage frame would crash the whole process
+            this._callbacks.onError?.(this, ensureError(e));
+            this._client.close(CLOSE_PROTOCOL_ERROR, "Malformed message");
+            return;
+        }
         if (data[0] === EVENT_AUTH) {
             const [, authKey, protocolVersion] = data as [string, string, number];
             this._authSent = true;
