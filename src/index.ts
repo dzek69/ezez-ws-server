@@ -22,6 +22,7 @@ type Options<TContext extends object = Record<string, never>>
 const defaultOptions: Required<ClientOptions> = {
     messagesBeforeAuth: "ignore",
     sendAfterDisconnect: "ignore",
+    authTimeoutMs: 5000,
     // eslint-disable-next-line @typescript-eslint/no-magic-numbers
     clearAwaitingRepliesAfterMs: 5 * 60 * 1000, // 5 minutes
 };
@@ -112,6 +113,9 @@ class EZEZWebsocketServer<
         if (this._options.clearAwaitingRepliesAfterMs <= 0) {
             throw new Error("`clearAwaitingRepliesAfterMs` must be greater than 0");
         }
+        if (this._options.authTimeoutMs <= 0) {
+            throw new Error("`authTimeoutMs` must be greater than 0");
+        }
         this._defaultContext = (defaultContext ?? {}) as TContext;
         this._callbacks = callbacks;
 
@@ -135,6 +139,7 @@ class EZEZWebsocketServer<
             try {
                 const wss = new WebSocketServer(omit(this._options, [
                     "serializerArgs", "unserializerArgs", "messagesBeforeAuth", "sendAfterDisconnect",
+                    "authTimeoutMs", "clearAwaitingRepliesAfterMs",
                 ]));
                 this._wss = wss;
 
@@ -160,6 +165,7 @@ class EZEZWebsocketServer<
                         }, pick(this._options, [
                             "messagesBeforeAuth",
                             "sendAfterDisconnect",
+                            "authTimeoutMs",
                             "clearAwaitingRepliesAfterMs",
                         ])),
                     );

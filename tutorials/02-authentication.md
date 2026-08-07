@@ -5,14 +5,14 @@ Every client must authenticate before it can exchange messages with the server. 
 ## Authentication Flow
 
 1. Client connects via WebSocket
-2. A 5-second timer starts — the client must send its auth key before it expires
+2. A timer starts (`authTimeoutMs`, 5 seconds by default) — the client must send its auth key before it expires
 3. The client sends its auth key along with the protocol version
 4. The server validates the protocol version (currently version 1)
 5. Your `onAuthRequest` callback is called with the client and the auth key
 6. If you return `true`: the server sends an auth-ok message and calls `onAuthOk`
-7. If you return `false`: the server sends an auth-rejected message, calls `onAuthRejected`, and closes the connection
+7. If you return `false` (or throw): the server sends an auth-rejected message, calls `onAuthRejected`, and closes the connection
 
-If the client doesn't send an auth message within 5 seconds, the server automatically rejects and disconnects it.
+If the client doesn't send an auth message within the timeout, the server automatically rejects and disconnects it. The timeout only covers sending the auth message — it exists to get rid of bare WebSocket connections that never attempt to authenticate (e.g. random internet bots) and does not limit how long your `onAuthRequest` verification takes.
 
 ## The `onAuthRequest` Callback
 
@@ -41,6 +41,12 @@ onAuthRequest: async (client, authKey) => {
     return user !== null;
 },
 ```
+
+### When `onAuthRequest` Throws
+
+If `onAuthRequest` throws (or its promise rejects) — for example, your database is down — it is treated as an auth failure: the error is passed to `onError`, the client receives an auth-rejected message with the reason `"Auth verification failed"` (the error details are never sent to the client), `onAuthRejected` is called, and the connection is closed.
+
+This is the only callback with such special handling. Every other callback is expected not to throw — see **A Note on Callbacks and Errors** below.
 
 ### Accepting All Clients
 
@@ -77,10 +83,15 @@ onAuthRejected: (client, reason) => {
     console.log(`Client rejected: ${reason}`);
     // reason is one of:
     // - "Invalid auth key" (your callback returned false)
+    // - "Auth verification failed" (your callback threw or rejected)
     // - "Protocol version mismatch, wanted 1, got X"
     // - "Auth timeout"
 },
 ```
+
+## A Note on Callbacks and Errors
+
+The library expects your callbacks not to throw (and async ones not to reject). They are invoked without any protective try/catch, so an exception escaping a callback is a bug in your code — depending on the context it may surface as an unhandled error or rejection. The only exception is `onAuthRequest`, as described above.
 
 ## Messages Before Authentication
 

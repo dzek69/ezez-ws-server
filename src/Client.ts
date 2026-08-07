@@ -1,6 +1,6 @@
 /* eslint-disable max-lines */
 
-import { ensureError, noop } from "@ezez/utils";
+import { ensureError, rethrow } from "@ezez/utils";
 import EventEmitter from "eventemitter3";
 // eslint-disable-next-line @typescript-eslint/no-shadow
 import { WebSocket } from "ws";
@@ -30,7 +30,6 @@ type ClientCallbacks<
     "onAuthOk" | "onAuthRejected" | "onMessage" | "onDisconnect" | "onError"
 > & { onClose: (client: EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>) => void };
 
-const AUTH_TIMEOUT = 5_000;
 const AWAITING_REPLIES_INTERVAL = 15_000;
 let _clientCounter = 0;
 const PROTOCOL_VERSION = 1;
@@ -183,7 +182,7 @@ class EZEZServerClient<
         this.off = this._ee.off.bind(this._ee);
         this.once = this._ee.once.bind(this._ee);
 
-        this._authTimeoutId = setTimeout(this._checkAuthTimeout, AUTH_TIMEOUT);
+        this._authTimeoutId = setTimeout(this._checkAuthTimeout, this._options.authTimeoutMs);
         this._awaitingRepliesIntervalId = setInterval(this._checkAwaitingReplies, AWAITING_REPLIES_INTERVAL);
         this._client.on("message", this._handleMessage);
         this._client.on("close", this._handleClose);
@@ -255,7 +254,21 @@ class EZEZServerClient<
                 this._callbacks.onAuthOk?.(this);
                 this._queue.forEach(this._handleMessage);
                 this._queue.length = 0;
-            }).catch(noop); // TODO this noop should be handled properly, in case onAuthRejected crashes for example
+            }, (error: unknown) => {
+                // `onAuthRequest` threw/rejected - treat as auth failure, otherwise the client would hang
+                // unauthenticated forever (the auth timeout is already consumed at this point)
+                clearTimeout(this._authTimeoutId);
+                this._callbacks.onError?.(this, ensureError(error));
+                if (this._authRejected || !this.alive) {
+                    return;
+                }
+                this._authOk = false;
+                this._authRejected = true;
+                const reason = "Auth verification failed";
+                this._client.send(this._serialize(EVENT_AUTH_REJECTED, reason));
+                this._callbacks.onAuthRejected?.(this, reason);
+                this._client.close();
+            }).catch(rethrow); // if onError throws then it's the user problem
             return;
         }
 
@@ -367,6 +380,9 @@ class EZEZServerClient<
     };
 
     private readonly _checkAuthTimeout = () => {
+        // This guards against bare connections that never even attempt to authenticate (e.g. random bots).
+        // A pending `onAuthRequest` is deliberately not treated as a timeout - a hanging callback is the
+        // library user's bug and babysitting every user callback is out of scope.
         if (!this._authSent) {
             this._authRejected = true;
             const reason = "Auth timeout";

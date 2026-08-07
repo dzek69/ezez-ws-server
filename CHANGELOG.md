@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - crash on malformed data
 - `broadcast` sending messages to unauthenticated clients
 - repeated auth requests were handled, now they are rejected to avoid confusion and attacks
+- fixed leaks when onAuthRequest throws an error, this is now reported back to client as failed auth and reported to onError callback
+### Changed
+- time to authenticate can now be set up via options
+- docs update to make it clear that it is expected that callbacks never throw/reject
 
 ## [0.5.1] - 2026-06-04
 ### Dev

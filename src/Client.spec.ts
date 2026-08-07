@@ -23,8 +23,8 @@ type TestCallbacks = {
     onAuthRejected?: (reason: string) => void;
 };
 
-const startServer = async (callbacks?: TestCallbacks) => {
-    const server = new EZEZWebsocketServer<Events>({ port: 0 }, {
+const startServer = async (callbacks?: TestCallbacks, options?: { authTimeoutMs?: number }) => {
+    const server = new EZEZWebsocketServer<Events>({ port: 0, ...options }, {
         onAuthRequest: async (client, authKey) => {
             return callbacks?.onAuthRequest?.(authKey) ?? Promise.resolve(authKey === "valid-key");
         },
@@ -205,6 +205,61 @@ describe("EZEZServerClient", () => {
                 must(authRejections).equal(1);
                 must(authOks).equal(0);
                 must(gotAuthOk).be.false();
+            }
+            finally {
+                server.close();
+            }
+        });
+    });
+
+    describe("zombie connections", () => {
+        it("rejects and disconnects the client when onAuthRequest throws", async () => {
+            const errors: Error[] = [];
+            const rejections: string[] = [];
+            const { server, port } = await startServer({
+                onAuthRequest: async () => Promise.reject(new Error("database exploded")),
+                onError: (error) => { errors.push(error); },
+                onAuthRejected: (reason) => { rejections.push(reason); },
+            });
+
+            try {
+                const ws = await connect(port);
+                const closePromise = waitForClose(ws);
+                let gotAuthRejected = false;
+                ws.on("message", (rawData) => {
+                    const text = Buffer.isBuffer(rawData) ? rawData.toString("utf8") : "";
+                    if (text.includes("Auth verification failed")) {
+                        gotAuthRejected = true;
+                    }
+                });
+
+                ws.send(serialize(EVENT_AUTH, "valid-key", PROTOCOL_VERSION));
+
+                await closePromise;
+
+                must(gotAuthRejected).be.true();
+                must(rejections).eql(["Auth verification failed"]);
+                must(errors.length).equal(1);
+                must(errors[0]!.message).equal("database exploded");
+            }
+            finally {
+                server.close();
+            }
+        });
+
+        it("times out and disconnects the client when no auth message is sent at all", async () => {
+            const rejections: string[] = [];
+            const { server, port } = await startServer({
+                onAuthRejected: (reason) => { rejections.push(reason); },
+            }, { authTimeoutMs: 100 });
+
+            try {
+                const ws = await connect(port);
+                const closePromise = waitForClose(ws);
+
+                await closePromise;
+
+                must(rejections).eql(["Auth timeout"]);
             }
             finally {
                 server.close();

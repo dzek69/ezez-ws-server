@@ -44,6 +44,7 @@ You can customize the process by providing custom serializers/deserializers.
 |---|---|---|---|
 | `messagesBeforeAuth` | `"ignore" \| "queue" \| "accept"` | `"ignore"` | How to handle messages received before authentication completes |
 | `sendAfterDisconnect` | `"ignore" \| "throw"` | `"ignore"` | What happens when you try to send a message to a disconnected client |
+| `authTimeoutMs` | `number` | `5000` (5 s) | How long a client has to send its auth message before being rejected and disconnected. Must be greater than 0. |
 | `clearAwaitingRepliesAfterMs` | `number` | `300000` (5 min) | How long to wait before cleaning up unanswered reply callbacks. Must be greater than 0. |
 | `defaultContext` | `TContext` | `{}` | Initial value for `client.context`, deep-cloned per connection via `structuredClone`. Required when the `TContext` generic is specified, optional otherwise. See the **Per-Client Context** page. |
 
@@ -61,6 +62,10 @@ Controls what happens when server code tries to send a message to a client that 
 
 - **`"ignore"`** (default) — The `send()` call silently returns `undefined`. No error.
 - **`"throw"`** — Throws an error. Useful during development to catch bugs where you're sending to stale client references.
+
+#### `authTimeoutMs`
+
+Time the client has to send its auth message. This rejects bare WebSocket connections that never attempt to authenticate (e.g. random internet bots). It only covers sending the auth message — it does not limit how long your `onAuthRequest` verification takes.
 
 #### `clearAwaitingRepliesAfterMs`
 
@@ -81,13 +86,15 @@ After a stale reply is cleaned up, if the reply eventually arrives it will be ha
 | `onDisconnect` | No | Called when a client disconnects |
 | `onError` | No | Called when a WebSocket error occurs on a client connection |
 
+Callbacks are expected not to throw (and async ones not to reject) — they are invoked without any protective try/catch, so an escaping exception is a bug in your code. The only exception is `onAuthRequest`: its throw/rejection is treated as an auth failure (reported via `onError`, client rejected and disconnected).
+
 ### `onAuthRequest`
 
 ```typescript
 onAuthRequest: (client: EZEZServerClient, auth: string) => Promise<boolean>
 ```
 
-The only required callback. Receives the client and the auth string. Must return a promise that resolves to `true` (accept) or `false` (reject).
+The only required callback. Receives the client and the auth string. Must return a promise that resolves to `true` (accept) or `false` (reject). If it throws or rejects, the client is rejected with the reason `"Auth verification failed"` and the error is reported via `onError`.
 
 ### `onAuthOk`
 
@@ -103,7 +110,7 @@ Called after successful authentication. Set up per-client event listeners and se
 onAuthRejected?: (client: EZEZServerClient, reason: string) => void
 ```
 
-Called when authentication fails. The `reason` parameter describes why: `"Invalid auth key"`, `"Auth timeout"`, or a protocol version mismatch message.
+Called when authentication fails. The `reason` parameter describes why: `"Invalid auth key"`, `"Auth verification failed"`, `"Auth timeout"`, or a protocol version mismatch message.
 
 ### `onMessage`
 

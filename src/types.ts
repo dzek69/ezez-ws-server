@@ -75,6 +75,13 @@ type EventsToEventEmitter<
  * Lifecycle callbacks for the WebSocket server.
  *
  * Only `onAuthRequest` is required. All other callbacks are optional.
+ *
+ * The library expects your callbacks not to throw (and async ones not to reject) - they are invoked without
+ * any protective try/catch, so an exception escaping a callback is your bug to fix, and depending on the
+ * context it may end up as an unhandled error or rejection.
+ * The only exception is `onAuthRequest`: since rejecting a client based on external checks (database down,
+ * verification service error) is a legitimate outcome, its throw/rejection is treated as an auth failure -
+ * the error is reported via `onError` and the client is rejected and disconnected.
  */
 type Callbacks<
     IncomingEvents extends TEvents,
@@ -201,6 +208,13 @@ type ClientOptions = {
      * - "throw": throw an error
      */
     sendAfterDisconnect?: "ignore" | "throw";
+    /**
+     * The number of milliseconds a client has to send its auth message before the connection is rejected
+     * and closed. This rejects bare WebSocket connections that never even attempt to authenticate
+     * (e.g. random internet bots). It does not limit how long the `onAuthRequest` verification itself takes.
+     * It must be greater than 0, by default it is set to 5 seconds.
+     */
+    authTimeoutMs?: number;
     /**
      * The number of milliseconds after which the client will clear the awaiting replies.
      * This prevents memory leaks in case the client is waiting for a reply that will never come.
