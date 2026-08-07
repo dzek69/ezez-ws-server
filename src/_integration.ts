@@ -29,7 +29,7 @@ type ClientContext = {
 
 /* eslint-disable no-param-reassign */
 // eslint-disable-next-line max-lines-per-function
-const createWss = (options: Options) => {
+const createWss = (options: Omit<Options<ClientContext, IncomingEvents, OutgoingEvents>, "defaultContext">) => {
     const ws = new EZEZWebsocketServer<IncomingEvents, OutgoingEvents, ClientContext>({
         ...options,
         messagesBeforeAuth: "ignore",

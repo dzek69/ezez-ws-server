@@ -3,6 +3,8 @@ import must from "must";
 // eslint-disable-next-line @typescript-eslint/no-shadow
 import { WebSocket } from "ws";
 
+import type { EZEZServerClient } from "./index.js";
+
 import { EZEZWebsocketServer } from "./index.js";
 
 type Events = {
@@ -13,6 +15,8 @@ const EVENT_AUTH = "ezez-ws::auth";
 const EVENT_AUTH_OK = "ezez-ws::auth-ok";
 const PROTOCOL_VERSION = 1;
 const CLOSE_PROTOCOL_ERROR = 1002;
+const CLOSE_POLICY_VIOLATION = 1008;
+const CLOSE_MESSAGE_TOO_BIG = 1009;
 
 const serialize = (...args: unknown[]) => serializeToBuffer(Buffer, [], ...args);
 
@@ -21,9 +25,18 @@ type TestCallbacks = {
     onAuthRequest?: (authKey: string) => Promise<boolean>;
     onAuthOk?: () => void;
     onAuthRejected?: (reason: string) => void;
+    onMessage?: (eventName: string, args: unknown[]) => void;
 };
 
-const startServer = async (callbacks?: TestCallbacks, options?: { authTimeoutMs?: number }) => {
+type TestOptions = {
+    authTimeoutMs?: number;
+    messagesBeforeAuth?: "ignore" | "queue" | "accept";
+    queueLimitBytes?: number;
+    queueOverflow?: "ignore" | "disconnect" | ((client: EZEZServerClient<Events>, byteLength: number) => void);
+    maxPayload?: number;
+};
+
+const startServer = async (callbacks?: TestCallbacks, options?: TestOptions) => {
     const server = new EZEZWebsocketServer<Events>({ port: 0, ...options }, {
         onAuthRequest: async (client, authKey) => {
             return callbacks?.onAuthRequest?.(authKey) ?? Promise.resolve(authKey === "valid-key");
@@ -31,6 +44,7 @@ const startServer = async (callbacks?: TestCallbacks, options?: { authTimeoutMs?
         onError: (client, error) => { callbacks?.onError?.(error); },
         onAuthOk: () => { callbacks?.onAuthOk?.(); },
         onAuthRejected: (client, reason) => { callbacks?.onAuthRejected?.(reason); },
+        onMessage: (client, eventName, args) => { callbacks?.onMessage?.(eventName, args); },
     });
     await server.start();
     const address = server.wss!.address();
@@ -260,6 +274,134 @@ describe("EZEZServerClient", () => {
                 await closePromise;
 
                 must(rejections).eql(["Auth timeout"]);
+            }
+            finally {
+                server.close();
+            }
+        });
+    });
+
+    describe("pre-auth queue limit", () => {
+        it("drops overflowing messages by default and processes the rest after auth", async () => {
+            const frame1 = serialize("ping", 1, null, "first");
+            const frame2 = serialize("ping", 2, null, "second-does-not-fit");
+            // both frames individually fit in maxPayload, but together they overflow the queue
+            const queueLimitBytes = frame1.length + frame2.length - 1;
+            const received: Array<[string, unknown[]]> = [];
+            const { server, port } = await startServer({
+                onMessage: (eventName, args) => { received.push([eventName, args]); },
+            }, { messagesBeforeAuth: "queue", queueLimitBytes, maxPayload: queueLimitBytes });
+
+            try {
+                const ws = await connect(port);
+                ws.send(frame1);
+                ws.send(frame2);
+                await authenticate(ws);
+                await delay(100);
+
+                must(received).eql([["ping", ["first"]]]);
+                must(ws.readyState).equal(WebSocket.OPEN);
+                ws.close();
+            }
+            finally {
+                server.close();
+            }
+        });
+
+        it("disconnects a client that overflows the queue with queueOverflow: disconnect", async () => {
+            const frame1 = serialize("ping", 1, null, "first");
+            const frame2 = serialize("ping", 2, null, "second-does-not-fit");
+            const queueLimitBytes = frame1.length + frame2.length - 1;
+            const { server, port } = await startServer({}, {
+                messagesBeforeAuth: "queue",
+                queueOverflow: "disconnect",
+                queueLimitBytes,
+                maxPayload: queueLimitBytes,
+            });
+
+            try {
+                const ws = await connect(port);
+                const closePromise = waitForClose(ws);
+
+                ws.send(frame1);
+                ws.send(frame2);
+
+                const { code } = await closePromise;
+                must(code).equal(CLOSE_POLICY_VIOLATION);
+            }
+            finally {
+                server.close();
+            }
+        });
+
+        it("calls the queueOverflow callback and keeps the connection", async () => {
+            const frame1 = serialize("ping", 1, null, "first");
+            const frame2 = serialize("ping", 2, null, "second-does-not-fit");
+            const queueLimitBytes = frame1.length + frame2.length - 1;
+            const overflows: number[] = [];
+            const { server, port } = await startServer({}, {
+                messagesBeforeAuth: "queue",
+                queueOverflow: (client, byteLength) => { overflows.push(byteLength); },
+                queueLimitBytes,
+                maxPayload: queueLimitBytes,
+            });
+
+            try {
+                const ws = await connect(port);
+                ws.send(frame1);
+                ws.send(frame2);
+                await delay(100);
+
+                must(overflows).eql([frame2.length]);
+                must(ws.readyState).equal(WebSocket.OPEN);
+                ws.close();
+            }
+            finally {
+                server.close();
+            }
+        });
+
+        it("processes messages queued within the limit after successful auth", async () => {
+            const received: Array<[string, unknown[]]> = [];
+            const { server, port } = await startServer({
+                onMessage: (eventName, args) => { received.push([eventName, args]); },
+            }, { messagesBeforeAuth: "queue" });
+
+            try {
+                const ws = await connect(port);
+                ws.send(serialize("ping", 1, null, "queued-hello"));
+                await authenticate(ws);
+                await delay(100);
+
+                must(received).eql([["ping", ["queued-hello"]]]);
+                ws.close();
+            }
+            finally {
+                server.close();
+            }
+        });
+
+        it("throws at init when a single message can't fit in the queue", () => {
+            must(() => new EZEZWebsocketServer<Events>(
+                { port: 0, messagesBeforeAuth: "queue", queueLimitBytes: 100, maxPayload: 200 },
+                { onAuthRequest: async () => Promise.resolve(true) },
+            )).throw(/must fit within/u);
+        });
+    });
+
+    describe("payload size limit", () => {
+        it("natively disconnects a client sending a message over maxPayload", async () => {
+            const { server, port } = await startServer({}, { maxPayload: 200 });
+
+            try {
+                const ws = await connect(port);
+                await authenticate(ws);
+                const closePromise = waitForClose(ws);
+
+                ws.send(serialize("ping", 1, null, "x".repeat(1000)));
+
+                const { code } = await closePromise;
+                must(code).equal(CLOSE_MESSAGE_TOO_BIG);
             }
             finally {
                 server.close();

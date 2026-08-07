@@ -35,6 +35,7 @@ let _clientCounter = 0;
 const PROTOCOL_VERSION = 1;
 const NOT_FOUND = -1;
 const CLOSE_PROTOCOL_ERROR = 1002;
+const CLOSE_POLICY_VIOLATION = 1008;
 
 /**
  * Represents an individual client connected to the WebSocket server.
@@ -88,7 +89,7 @@ class EZEZServerClient<
 
     private readonly _callbacks: ClientCallbacks<IncomingEvents, OutgoingEvents, TContext>;
 
-    private readonly _options: Required<ClientOptions>;
+    private readonly _options: Required<ClientOptions<IncomingEvents, OutgoingEvents, TContext>>;
 
     private _id = 0;
 
@@ -102,6 +103,11 @@ class EZEZServerClient<
      * Queue of raw messages that were sent before the auth was successful.
      */
     private readonly _queue: Buffer[] = [];
+
+    /**
+     * Total size in bytes of the messages currently in `_queue`.
+     */
+    private _queueBytes = 0;
 
     /**
      * List of sent messages that are waiting for a reply.
@@ -169,7 +175,7 @@ class EZEZServerClient<
     public constructor(
         deps: Deps<TContext>,
         callbacks: ClientCallbacks<IncomingEvents, OutgoingEvents, TContext>,
-        options: Required<ClientOptions>,
+        options: Required<ClientOptions<IncomingEvents, OutgoingEvents, TContext>>,
     ) {
         this._client = deps.client;
         this._serialize = deps.serialize;
@@ -233,6 +239,7 @@ class EZEZServerClient<
                 return;
             }
 
+            // eslint-disable-next-line max-statements
             this._callbacks.onAuthRequest(this, authKey).then((isAuthOk) => {
                 clearTimeout(this._authTimeoutId);
                 if (this._authRejected || !this.alive) {
@@ -254,6 +261,7 @@ class EZEZServerClient<
                 this._callbacks.onAuthOk?.(this);
                 this._queue.forEach(this._handleMessage);
                 this._queue.length = 0;
+                this._queueBytes = 0;
             }, (error: unknown) => {
                 // `onAuthRequest` threw/rejected - treat as auth failure, otherwise the client would hang
                 // unauthenticated forever (the auth timeout is already consumed at this point)
@@ -282,6 +290,18 @@ class EZEZServerClient<
         ];
 
         if (!this._authOk && this._options.messagesBeforeAuth === "queue") {
+            if (this._queueBytes + message.length > this._options.queueLimitBytes) {
+                const behavior = this._options.queueOverflow;
+                if (behavior === "disconnect") {
+                    this._authRejected = true;
+                    this._client.close(CLOSE_POLICY_VIOLATION, "Pre-auth queue limit exceeded");
+                }
+                else if (behavior !== "ignore") {
+                    behavior(this, message.length);
+                }
+                return;
+            }
+            this._queueBytes += message.length;
             this._queue.push(message);
             return;
         }
@@ -371,6 +391,7 @@ class EZEZServerClient<
         this._callbacks.onDisconnect?.(this, code, reason.toString());
         this._callbacks.onClose(this);
         this._queue.length = 0;
+        this._queueBytes = 0;
         this._awaitingReplies.length = 0;
         this._ee.removeAllListeners();
     };

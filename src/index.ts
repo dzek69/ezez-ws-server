@@ -14,18 +14,27 @@ import { EZEZServerClient } from "./Client";
  *
  * When the `TContext` generic is specified, `defaultContext` becomes a required field, used to seed each connected client's `context` (via `structuredClone`).
  */
-type Options<TContext extends object = Record<string, never>>
+type Options<
+    TContext extends object = Record<string, never>,
+    IncomingEvents extends TEvents = TEvents,
+    OutgoingEvents extends TEvents = IncomingEvents,
+>
     = [TContext] extends [Record<string, never>]
-        ? EZEZServerOptions & ClientOptions & { defaultContext?: TContext }
-        : EZEZServerOptions & ClientOptions & { defaultContext: TContext };
+        ? EZEZServerOptions & ClientOptions<IncomingEvents, OutgoingEvents, TContext> & { defaultContext?: TContext }
+        : EZEZServerOptions & ClientOptions<IncomingEvents, OutgoingEvents, TContext> & { defaultContext: TContext };
 
-const defaultOptions: Required<ClientOptions> = {
+// eslint-disable-next-line @typescript-eslint/no-magic-numbers
+const MIB = 1024 * 1024;
+
+const defaultOptions = {
     messagesBeforeAuth: "ignore",
     sendAfterDisconnect: "ignore",
     authTimeoutMs: 5000,
+    queueLimitBytes: MIB,
+    queueOverflow: "ignore",
     // eslint-disable-next-line @typescript-eslint/no-magic-numbers
     clearAwaitingRepliesAfterMs: 5 * 60 * 1000, // 5 minutes
-};
+} satisfies Required<ClientOptions>;
 
 /**
  * WebSocket server with built-in authentication, type-safe events, and reply tracking.
@@ -79,7 +88,7 @@ class EZEZWebsocketServer<
     OutgoingEvents extends TEvents = IncomingEvents,
     TContext extends object = Record<string, never>,
 > {
-    private readonly _options: EZEZServerOptions & Required<ClientOptions>;
+    private readonly _options: EZEZServerOptions & Required<ClientOptions<IncomingEvents, OutgoingEvents, TContext>>;
 
     private readonly _defaultContext: TContext;
 
@@ -103,18 +112,35 @@ class EZEZWebsocketServer<
      * @param callbacks - Lifecycle callbacks for authentication, messages, disconnections, and errors.
      * @throws Error if `clearAwaitingRepliesAfterMs` is set to 0 or less.
      */
+    // eslint-disable-next-line max-statements
     public constructor(
-        options: Options<TContext>, callbacks: Callbacks<IncomingEvents, OutgoingEvents, TContext>,
+        options: Options<TContext, IncomingEvents, OutgoingEvents>,
+        callbacks: Callbacks<IncomingEvents, OutgoingEvents, TContext>,
     ) {
         const {
             defaultContext, ...rest
-        } = options as EZEZServerOptions & ClientOptions & { defaultContext?: TContext };
-        this._options = { ...defaultOptions, ...rest };
+        } = options as EZEZServerOptions
+        & ClientOptions<IncomingEvents, OutgoingEvents, TContext> & { defaultContext?: TContext };
+        // `ws` defaults `maxPayload` to 100 MiB, which allows a memory exhaustion attack - default it low
+        this._options = { maxPayload: MIB, ...defaultOptions, ...rest };
         if (this._options.clearAwaitingRepliesAfterMs <= 0) {
             throw new Error("`clearAwaitingRepliesAfterMs` must be greater than 0");
         }
         if (this._options.authTimeoutMs <= 0) {
             throw new Error("`authTimeoutMs` must be greater than 0");
+        }
+        if (this._options.queueLimitBytes <= 0) {
+            throw new Error("`queueLimitBytes` must be greater than 0");
+        }
+        if (this._options.messagesBeforeAuth === "queue") {
+            const maxPayload = this._options.maxPayload ?? 0;
+            // `maxPayload: 0` means no limit in `ws`, so it can't guarantee the fit either
+            if (maxPayload <= 0 || maxPayload > this._options.queueLimitBytes) {
+                throw new Error(
+                    "A single message (`maxPayload`) must fit within `queueLimitBytes`"
+                    + " when `messagesBeforeAuth` is \"queue\"",
+                );
+            }
         }
         this._defaultContext = (defaultContext ?? {}) as TContext;
         this._callbacks = callbacks;
@@ -139,7 +165,7 @@ class EZEZWebsocketServer<
             try {
                 const wss = new WebSocketServer(omit(this._options, [
                     "serializerArgs", "unserializerArgs", "messagesBeforeAuth", "sendAfterDisconnect",
-                    "authTimeoutMs", "clearAwaitingRepliesAfterMs",
+                    "authTimeoutMs", "clearAwaitingRepliesAfterMs", "queueLimitBytes", "queueOverflow",
                 ]));
                 this._wss = wss;
 
@@ -166,6 +192,8 @@ class EZEZWebsocketServer<
                             "messagesBeforeAuth",
                             "sendAfterDisconnect",
                             "authTimeoutMs",
+                            "queueLimitBytes",
+                            "queueOverflow",
                             "clearAwaitingRepliesAfterMs",
                         ])),
                     );

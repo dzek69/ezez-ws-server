@@ -108,7 +108,7 @@ const server = new EZEZWebsocketServer<MyEvents>(
 ```
 
 - `"ignore"` (default) — Messages sent before auth are silently dropped, with a proper client-side code this should never occur, so we recommend to keep this default
-- `"queue"` — Messages are queued and automatically processed after successful auth
+- `"queue"` — Messages are queued and automatically processed after successful auth. The queue size is limited by `queueLimitBytes` (1 MiB by default); what happens with a message that would not fit is controlled by `queueOverflow` (dropped by default).
 - `"accept"` — Messages are processed immediately, even before auth completes. This puts the burden on you to handle unauthenticated messages properly.
 
 See the **Configuration** page for more details.

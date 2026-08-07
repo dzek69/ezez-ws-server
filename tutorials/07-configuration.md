@@ -17,6 +17,7 @@ These are passed through to the underlying `ws` `WebSocketServer`. The most comm
 | `noServer` | `boolean` | Enable manual upgrade handling |
 | `path` | `string` | Accept connections only on this path (e.g., `"/ws"`) |
 | `host` | `string` | Hostname to bind to |
+| `maxPayload` | `number` | Max size (bytes) of a single incoming message. This library defaults it to 1 MiB (the `ws` default is 100 MiB). A message exceeding it always closes the connection (close code 1009) — `ws` enforces the limit while the frame is still being received, so oversized frames are never fully buffered. |
 
 You must provide exactly one of `port`, `server`, or `noServer`.
 
@@ -45,6 +46,8 @@ You can customize the process by providing custom serializers/deserializers.
 | `messagesBeforeAuth` | `"ignore" \| "queue" \| "accept"` | `"ignore"` | How to handle messages received before authentication completes |
 | `sendAfterDisconnect` | `"ignore" \| "throw"` | `"ignore"` | What happens when you try to send a message to a disconnected client |
 | `authTimeoutMs` | `number` | `5000` (5 s) | How long a client has to send its auth message before being rejected and disconnected. Must be greater than 0. |
+| `queueLimitBytes` | `number` | `1048576` (1 MiB) | Max total size of messages queued before auth (`messagesBeforeAuth: "queue"`). Must be greater than 0. |
+| `queueOverflow` | `"ignore" \| "disconnect" \| callback` | `"ignore"` | What to do with a pre-auth message that would overflow the queue |
 | `clearAwaitingRepliesAfterMs` | `number` | `300000` (5 min) | How long to wait before cleaning up unanswered reply callbacks. Must be greater than 0. |
 | `defaultContext` | `TContext` | `{}` | Initial value for `client.context`, deep-cloned per connection via `structuredClone`. Required when the `TContext` generic is specified, optional otherwise. See the **Per-Client Context** page. |
 
@@ -66,6 +69,33 @@ Controls what happens when server code tries to send a message to a client that 
 #### `authTimeoutMs`
 
 Time the client has to send its auth message. This rejects bare WebSocket connections that never attempt to authenticate (e.g. random internet bots). It only covers sending the auth message — it does not limit how long your `onAuthRequest` verification takes.
+
+#### `queueLimitBytes` and `queueOverflow`
+
+With `messagesBeforeAuth: "queue"`, messages received before authentication completes are buffered in memory. `queueLimitBytes` limits the total buffered size per client, and `queueOverflow` controls what happens with a message that would not fit:
+
+- **`"ignore"`** (default) — The message is silently dropped; the connection and the already queued messages are kept.
+- **`"disconnect"`** — The connection is closed with code `1008` (policy violation).
+- **callback** `(client, byteLength) => void` — The message is dropped and your callback is called, e.g. to send an error message back to the client or to disconnect it. The connection stays open.
+
+The queue (and its byte counter) is discarded once authentication succeeds or the connection closes.
+
+Since a single message is limited by `maxPayload` (see Server Options above), with `messagesBeforeAuth: "queue"` the server requires `maxPayload` ≤ `queueLimitBytes` at construction time — otherwise a single legal message could never fit in the queue.
+
+```typescript
+const server = new EZEZWebsocketServer<MyEvents>(
+    {
+        port: 8080,
+        messagesBeforeAuth: "queue",
+        queueLimitBytes: 256 * 1024, // 256 KiB
+        maxPayload: 64 * 1024, // 64 KiB
+        queueOverflow: (client, byteLength) => {
+            client.send("error", [`Too many messages queued before auth (${byteLength} bytes dropped)`]);
+        },
+    },
+    { onAuthRequest: async () => true },
+);
+```
 
 #### `clearAwaitingRepliesAfterMs`
 

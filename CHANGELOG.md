@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 - time to authenticate can now be set up via options
 - docs update to make it clear that it is expected that callbacks never throw/reject
+### Added
+- options to control max queue size in bytes and what to do when it overflows
+### Breaking
+- default max payload size is now 1MB instead of 100MB
 
 ## [0.5.1] - 2026-06-04
 ### Dev

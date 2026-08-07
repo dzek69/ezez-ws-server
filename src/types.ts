@@ -175,6 +175,11 @@ type AwaitingReply<
  *
  * Includes all options from the `ws` library (such as `port`, `server`, `noServer`, `path`, etc.)
  * plus optional custom serialization configuration.
+ *
+ * Note: the `ws` option `maxPayload` (maximum size of a single incoming message) is defaulted by this
+ * library to 1 MiB instead of `ws`'s own 100 MiB. A message exceeding it always closes the connection
+ * (close code 1009) - `ws` enforces the limit while the frame is still being received, so oversized frames
+ * are never fully buffered in memory.
  */
 type EZEZServerOptions = ServerOptions & {
     /**
@@ -194,7 +199,11 @@ type EZEZServerOptions = ServerOptions & {
  *
  * All fields are optional and have sensible defaults.
  */
-type ClientOptions = {
+type ClientOptions<
+    IncomingEvents extends TEvents = TEvents,
+    OutgoingEvents extends TEvents = IncomingEvents,
+    TContext extends object = Record<string, never>,
+> = {
     /**
      * How to handle messages before authentication
      * - "ignore": ignore the message
@@ -215,6 +224,27 @@ type ClientOptions = {
      * It must be greater than 0, by default it is set to 5 seconds.
      */
     authTimeoutMs?: number;
+    /**
+     * The maximum total size (in bytes) of messages queued before authentication completes
+     * (only relevant with `messagesBeforeAuth: "queue"`). What happens with a message that would not fit
+     * is controlled by `queueOverflow`.
+     * It must be greater than 0, by default it is set to 1 MiB.
+     */
+    queueLimitBytes?: number;
+    /**
+     * What to do when a pre-auth message would push the queue over `queueLimitBytes`
+     * (only relevant with `messagesBeforeAuth: "queue"`):
+     * - "ignore" (default): silently drop the message; the connection and already queued messages are kept
+     * - "disconnect": close the connection (close code 1008)
+     * - callback: the message is dropped and your callback is called with the client and the byte length
+     *   of the dropped message - e.g. to send back an error or to disconnect; the connection stays open
+     *
+     * This only concerns the queue - the size of a single message is limited by the native `ws` `maxPayload`
+     * option (which this library defaults to 1 MiB instead of `ws`'s own 100 MiB), and exceeding that always
+     * closes the connection (close code 1009).
+     */
+    queueOverflow?: "ignore" | "disconnect"
+        | ((client: EZEZServerClient<IncomingEvents, OutgoingEvents, TContext>, byteLength: number) => void);
     /**
      * The number of milliseconds after which the client will clear the awaiting replies.
      * This prevents memory leaks in case the client is waiting for a reply that will never come.
