@@ -3,7 +3,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [EZEZ Changelog](https://ezez.dev/changelog/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [UNRELEASED]
+## [0.6.0] - 2026-08-09
 ### Fixed
 - crash on malformed data
 - `broadcast` sending messages to unauthenticated clients
