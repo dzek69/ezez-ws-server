@@ -281,6 +281,86 @@ describe("EZEZServerClient", () => {
         });
     });
 
+    describe("protocol field validation", () => {
+        it("closes the connection on invalid protocol field types", async () => {
+            const errors: Error[] = [];
+            const { server, port } = await startServer({ onError: (error) => { errors.push(error); } });
+
+            try {
+                const payloads = [
+                    serialize(123, 1, null, "x"), // non-string event name
+                    serialize({ evil: true }, 1, null, "x"), // object as event name
+                    serialize("ping", "nan", null, "x"), // non-number event id
+                    serialize("ping", 1.5, null, "x"), // non-integer event id
+                    serialize("ping", 1, "not-null", "x"), // invalid reply-to
+                ];
+
+                for (const payload of payloads) {
+                    const wsClient = await connect(port);
+                    const closePromise = waitForClose(wsClient);
+                    wsClient.send(payload);
+                    const { code } = await closePromise;
+                    must(code).equal(CLOSE_PROTOCOL_ERROR);
+                }
+
+                must(errors.length).equal(payloads.length);
+
+                const ws = await connect(port);
+                await authenticate(ws);
+                ws.close();
+            }
+            finally {
+                server.close();
+            }
+        });
+
+        it("rejects an auth frame with a non-string auth key", async () => {
+            const authRequests: string[] = [];
+            const { server, port } = await startServer({
+                onAuthRequest: async (authKey) => {
+                    authRequests.push(authKey);
+                    return Promise.resolve(true);
+                },
+            });
+
+            try {
+                const ws = await connect(port);
+                const closePromise = waitForClose(ws);
+
+                ws.send(serialize(EVENT_AUTH, 123, PROTOCOL_VERSION));
+
+                const { code } = await closePromise;
+                must(code).equal(CLOSE_PROTOCOL_ERROR);
+                must(authRequests).eql([]);
+            }
+            finally {
+                server.close();
+            }
+        });
+
+        it("closes the connection when a client sends a reserved event", async () => {
+            const received: string[] = [];
+            const { server, port } = await startServer({
+                onMessage: (eventName) => { received.push(eventName); },
+            });
+
+            try {
+                const ws = await connect(port);
+                await authenticate(ws);
+                const closePromise = waitForClose(ws);
+
+                ws.send(serialize("ezez-ws::auth-ok", 5, null));
+
+                const { code } = await closePromise;
+                must(code).equal(CLOSE_PROTOCOL_ERROR);
+                must(received).eql([]);
+            }
+            finally {
+                server.close();
+            }
+        });
+    });
+
     describe("pre-auth queue limit", () => {
         it("drops overflowing messages by default and processes the rest after auth", async () => {
             const frame1 = serialize("ping", 1, null, "first");

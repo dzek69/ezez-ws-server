@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - `broadcast` sending messages to unauthenticated clients
 - repeated auth requests were handled, now they are rejected to avoid confusion and attacks
 - fixed leaks when onAuthRequest throws an error, this is now reported back to client as failed auth and reported to onError callback
+- added proper runtime types validation for protocol messages
 ### Changed
 - time to authenticate can now be set up via options
 - docs update to make it clear that it is expected that callbacks never throw/reject
@@ -16,6 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - options to control max queue size in bytes and what to do when it overflows
 ### Breaking
 - default max payload size is now 1MB instead of 100MB
+- it's not disallowed to send messages with reserved protocol prefix, previously such messages went through and were only disallowed on types level
 
 ## [0.5.1] - 2026-06-04
 ### Dev

@@ -2,6 +2,8 @@ import type { serializeToBuffer, unserializeFromBuffer } from "@ezez/utils";
 import type { ServerOptions } from "ws";
 import type { EZEZServerClient } from "./Client";
 
+/** @internal Prefix reserved for internal protocol event names. */
+const RESERVED_PREFIX = "ezez-ws::";
 /** @internal Event name used for authentication requests. */
 const EVENT_AUTH = "ezez-ws::auth";
 /** @internal Event name used to confirm successful authentication. */
@@ -260,6 +262,7 @@ type ClientOptions<
 };
 
 export {
+    RESERVED_PREFIX,
     EVENT_AUTH,
     EVENT_AUTH_OK,
     EVENT_AUTH_REJECTED,

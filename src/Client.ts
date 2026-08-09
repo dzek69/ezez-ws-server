@@ -12,7 +12,7 @@ import type {
     MakeOptional, ReplyTupleUnion, TEvents,
 } from "./types";
 
-import { EVENT_AUTH, EVENT_AUTH_OK, EVENT_AUTH_REJECTED } from "./types";
+import { EVENT_AUTH, EVENT_AUTH_OK, EVENT_AUTH_REJECTED, RESERVED_PREFIX } from "./types";
 
 type Deps<TContext extends object> = {
     client: WebSocket;
@@ -226,7 +226,12 @@ class EZEZServerClient<
                 // (every frame hitting `onAuthRequest`) and could re-fire `onAuthOk`
                 return;
             }
-            const [, authKey, protocolVersion] = data as [string, string, number];
+            const [, authKey, protocolVersion] = data;
+            if (typeof authKey !== "string" || typeof protocolVersion !== "number") {
+                this._callbacks.onError?.(this, new Error("Malformed auth message - invalid field types"));
+                this._client.close(CLOSE_PROTOCOL_ERROR, "Malformed message");
+                return;
+            }
             this._authSent = true;
 
             if (protocolVersion !== PROTOCOL_VERSION) {
@@ -280,14 +285,33 @@ class EZEZServerClient<
             return;
         }
 
+        const [rawEventName, rawEventId, rawReplyTo, ...restArgs] = data;
+        if (
+            typeof rawEventName !== "string"
+            || typeof rawEventId !== "number" || !Number.isInteger(rawEventId)
+            || (rawReplyTo !== null && (typeof rawReplyTo !== "number" || !Number.isInteger(rawReplyTo)))
+        ) {
+            this._callbacks.onError?.(this, new Error("Malformed message - invalid protocol fields"));
+            this._client.close(CLOSE_PROTOCOL_ERROR, "Malformed message");
+            return;
+        }
+
+        if (rawEventName.startsWith(RESERVED_PREFIX)) {
+            // `EVENT_AUTH` is handled above - any other reserved event coming from a client (e.g. a spoofed
+            // `auth-ok`) is a protocol violation and must not reach user listeners as a regular event
+            this._callbacks.onError?.(this, new Error(`Reserved event received from client: ${rawEventName}`));
+            this._client.close(CLOSE_PROTOCOL_ERROR, "Reserved event");
+            return;
+        }
+
         if (!this._authOk && this._options.messagesBeforeAuth === "ignore") {
             return;
         }
 
-        const eventName = data[0] as keyof IncomingEvents;
-        const [, eventId, replyTo, ...args] = data as [
-            keyof IncomingEvents, number, number | null, ...IncomingEvents[typeof eventName],
-        ];
+        const eventName = rawEventName as keyof IncomingEvents;
+        const eventId: number = rawEventId;
+        const replyTo: number | null = rawReplyTo;
+        const args = restArgs as IncomingEvents[typeof eventName];
 
         if (!this._authOk && this._options.messagesBeforeAuth === "queue") {
             if (this._queueBytes + message.length > this._options.queueLimitBytes) {
