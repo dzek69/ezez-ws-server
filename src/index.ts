@@ -132,6 +132,9 @@ class EZEZWebsocketServer<
         if (this._options.queueLimitBytes <= 0) {
             throw new Error("`queueLimitBytes` must be greater than 0");
         }
+        if (this._options.maxBigIntLength !== undefined && this._options.maxBigIntLength <= 0) {
+            throw new Error("`maxBigIntLength` must be greater than 0 (use `Infinity` to disable the limit)");
+        }
         if (this._options.messagesBeforeAuth === "queue") {
             const maxPayload = this._options.maxPayload ?? 0;
             // `maxPayload: 0` means no limit in `ws`, so it can't guarantee the fit either
@@ -146,7 +149,14 @@ class EZEZWebsocketServer<
         this._callbacks = callbacks;
 
         this._serialize = serializeToBuffer.bind(null, Buffer, options.serializerArgs ?? []);
-        this._unserialize = unserializeFromBuffer.bind(null, Buffer, options.unserializerArgs ?? []);
+        let unserializerArgs = options.unserializerArgs ?? [];
+        if (options.maxBigIntLength !== undefined) {
+            unserializerArgs = [
+                unserializerArgs[0],
+                { ...unserializerArgs[1], maxBigIntLength: options.maxBigIntLength },
+            ];
+        }
+        this._unserialize = unserializeFromBuffer.bind(null, Buffer, unserializerArgs);
     }
 
     /**
@@ -164,8 +174,9 @@ class EZEZWebsocketServer<
         return new Promise<void>((resolve, reject) => {
             try {
                 const wss = new WebSocketServer(omit(this._options, [
-                    "serializerArgs", "unserializerArgs", "messagesBeforeAuth", "sendAfterDisconnect",
-                    "authTimeoutMs", "clearAwaitingRepliesAfterMs", "queueLimitBytes", "queueOverflow",
+                    "serializerArgs", "unserializerArgs", "maxBigIntLength", "messagesBeforeAuth",
+                    "sendAfterDisconnect", "authTimeoutMs", "clearAwaitingRepliesAfterMs",
+                    "queueLimitBytes", "queueOverflow",
                 ]));
                 this._wss = wss;
 
@@ -264,7 +275,10 @@ class EZEZWebsocketServer<
     }
 
     /**
-     * Stops the server, closes all client connections, and clears the client list.
+     * Stops the server, terminates all client connections, and clears the client list.
+     *
+     * Connections are terminated immediately, without a close handshake. If you want clients to receive
+     * a proper close frame, call {@link EZEZServerClient.disconnect} on each of {@link clients} first.
      *
      * After calling this method, the server can no longer accept connections. The {@link wss} getter will return `null`.
      */
@@ -272,6 +286,8 @@ class EZEZWebsocketServer<
         if (this._wss) {
             this._wss.close();
             this._wss = null;
+            // `wss.close()` only stops listening - existing sockets (and their per-client timers) would live on
+            [...this._clients].forEach((client) => { client.client.terminate(); });
             this._clients.length = 0;
         }
     }

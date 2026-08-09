@@ -34,6 +34,7 @@ type TestOptions = {
     queueLimitBytes?: number;
     queueOverflow?: "ignore" | "disconnect" | ((client: EZEZServerClient<Events>, byteLength: number) => void);
     maxPayload?: number;
+    maxBigIntLength?: number;
 };
 
 const startServer = async (callbacks?: TestCallbacks, options?: TestOptions) => {
@@ -486,6 +487,93 @@ describe("EZEZServerClient", () => {
             finally {
                 server.close();
             }
+        });
+    });
+
+    describe("BigInt length limit", () => {
+        it("closes the connection on a BigInt over the default limit", async () => {
+            const errors: Error[] = [];
+            const { server, port } = await startServer({ onError: (error) => { errors.push(error); } });
+
+            try {
+                const ws = await connect(port);
+                await authenticate(ws);
+                const closePromise = waitForClose(ws);
+
+                ws.send(serialize("ping", 1, null, BigInt("1".repeat(10_001))));
+
+                const { code } = await closePromise;
+                must(code).equal(CLOSE_PROTOCOL_ERROR);
+                must(errors.length).equal(1);
+            }
+            finally {
+                server.close();
+            }
+        });
+
+        it("respects a custom maxBigIntLength", async () => {
+            const received: unknown[][] = [];
+            const { server, port } = await startServer({
+                onMessage: (eventName, args) => { received.push(args); },
+            }, { maxBigIntLength: 5 });
+
+            try {
+                const ws = await connect(port);
+                await authenticate(ws);
+
+                ws.send(serialize("ping", 1, null, BigInt(12345))); // 5 digits - fits
+                await delay(100);
+                must(received).eql([[BigInt(12345)]]);
+
+                const closePromise = waitForClose(ws);
+                ws.send(serialize("ping", 2, null, BigInt(123456))); // 6 digits - over the limit
+
+                const { code } = await closePromise;
+                must(code).equal(CLOSE_PROTOCOL_ERROR);
+                must(received.length).equal(1);
+            }
+            finally {
+                server.close();
+            }
+        });
+
+        it("allows disabling the limit with Infinity", async () => {
+            const received: unknown[][] = [];
+            const { server, port } = await startServer({
+                onMessage: (eventName, args) => { received.push(args); },
+            }, { maxBigIntLength: Infinity });
+
+            try {
+                const ws = await connect(port);
+                await authenticate(ws);
+
+                const bigValue = BigInt("1".repeat(10_001));
+                ws.send(serialize("ping", 1, null, bigValue));
+                await delay(100);
+
+                must(received).eql([[bigValue]]);
+                must(ws.readyState).equal(WebSocket.OPEN);
+                ws.close();
+            }
+            finally {
+                server.close();
+            }
+        });
+    });
+
+    describe("server close", () => {
+        it("terminates existing client connections", async () => {
+            const { server, port } = await startServer();
+            const ws = await connect(port);
+            await authenticate(ws);
+            const closePromise = waitForClose(ws);
+
+            server.close();
+
+            const { code } = await closePromise;
+            const ABNORMAL_CLOSURE = 1006; // terminate() destroys the socket without a close frame
+            must(code).equal(ABNORMAL_CLOSURE);
+            must(server.wss).be.null();
         });
     });
 

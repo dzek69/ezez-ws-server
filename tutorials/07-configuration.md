@@ -37,7 +37,8 @@ You can customize the process by providing custom serializers/deserializers.
 | Option | Type                           | Default | Description |
 |---|--------------------------------|---|---|
 | `serializerArgs` | `[CustomSerializers, Options]` | `[]` | Custom arguments passed to `@ezez/utils` `serializeToBuffer`. Your custom serializer must be compatible with the deserializer on the client side. |
-| `unserializerArgs` | `[CustomDeserializers]`        | `[]` | Custom arguments passed to `@ezez/utils` `unserializeFromBuffer`. Your custom unserializer must be compatible with the serializer on the client side. |
+| `unserializerArgs` | `[CustomDeserializers, Options]` | `[]` | Custom arguments passed to `@ezez/utils` `unserializeFromBuffer`. Your custom unserializer must be compatible with the serializer on the client side. |
+| `maxBigIntLength` | `number` | `10000` | Max length (characters) of a single serialized BigInt value accepted by the deserializer — parsing time of huge BigInts grows faster than their length, so malicious values could block the event loop. A message over the limit is treated as malformed (close code 1002). Must be greater than 0, `Infinity` disables the limit. Takes precedence over deserializer options passed via `unserializerArgs`. |
 
 ### Client Behavior Options
 

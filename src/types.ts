@@ -194,6 +194,15 @@ type EZEZServerOptions = ServerOptions & {
      * Your custom unserializer must be compatible with custom serializer on the client side
      */
     unserializerArgs?: Parameters<typeof unserializeFromBuffer>[1];
+    /**
+     * Maximum length in characters of a single serialized BigInt value accepted by the deserializer.
+     * Parsing time of a BigInt grows faster than its length, so huge malicious values could block
+     * the event loop. A message with an over-limit BigInt is treated as malformed (connection is closed).
+     *
+     * It must be greater than 0, defaults to 10000 (the `@ezez/utils` default). Use `Infinity` to disable
+     * the limit. Takes precedence over deserializer options passed via `unserializerArgs`.
+     */
+    maxBigIntLength?: number;
 };
 
 /**
